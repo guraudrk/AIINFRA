@@ -1,0 +1,58 @@
+# AX Platform Lab — ai-platform 차트 기본값
+# GPU 모드: SIMULATED(kind + fake-gpu) 기준. docs/00-environment.md 참고
+
+# GPU 노드 배치 공통 설정: 라벨로 끌어당기고(nodeSelector) taint를 허용(toleration)
+gpuNode:
+  nodeSelector:
+    node-role: gpu
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+
+# ── sLLM 서빙 ───────────────────────────────────────────────
+llmServing:
+  enabled: true
+  engine: ollama            # ollama | vllm (vllm은 REAL GPU 전용, 이 PC에서는 미검증)
+  image: ollama/ollama:0.40.0
+  model: qwen2.5:3b         # Q4_K_M, 파일 약 1.9GB, 한국어 가능
+  numParallel: 4            # 동시에 처리할 요청 수 (슬롯마다 KV 캐시를 따로 잡는다)
+  contextLength: 4096       # 요청당 최대 컨텍스트 토큰
+  gpu: 1                    # nvidia.com/gpu 개수 (SIMULATED에서는 스케줄링에만 쓰이고 실제 추론은 CPU)
+  storage: 10Gi             # 모델 캐시 PVC
+  # 메모리 계산 근거 (qwen2.5:3b, Q4_K_M):
+  #   가중치        ≈ 3.1B 파라미터 × 약 0.6바이트(Q4_K_M 평균)  ≈ 1.9 GB
+  #   KV 캐시/토큰  = 2(K,V) × 36레이어 × 2(KV헤드) × 128(헤드차원) × 2바이트(FP16) ≈ 36 KB
+  #   KV 캐시 합계  ≈ 36 KB × 4096 컨텍스트 × 4 슬롯 ≈ 0.6 GB
+  #   런타임 여유   ≈ 0.5 GB  →  합계 약 3.0 GB = requests, 순간 피크 대비 limits 4Gi
+  resources:
+    requests:
+      cpu: "2"
+      memory: 3Gi
+    limits:
+      cpu: "6"
+      memory: 4Gi
+  # engine: vllm 일 때만 사용 (OpenAI 호환 API, 포트 8000)
+  vllm:
+    image: vllm/vllm-openai:latest
+    model: Qwen/Qwen2.5-3B-Instruct-AWQ
+    maxModelLen: 4096
+    gpuMemoryUtilization: 0.85
+
+# ── 임베딩 서빙 ─────────────────────────────────────────────
+embeddingServing:
+  enabled: true
+  image: ollama/ollama:0.40.0
+  model: bge-m3             # 568M 파라미터, 1024차원, 다국어, F16 파일 약 1.2GB
+  dimensions: 1024          # pgvector 컬럼 차원과 반드시 같아야 한다 (M3)
+  numParallel: 2
+  gpu: 1
+  storage: 5Gi
+  # 메모리 계산 근거: 가중치 568M × 2바이트(F16) ≈ 1.2 GB + 배치·런타임 여유 0.3 GB ≈ 1.5 GB
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1536Mi
+    limits:
+      cpu: "4"
+      memory: 2560Mi

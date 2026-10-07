@@ -1,0 +1,114 @@
+{{- if .Values.embeddingServing.enabled }}
+{{- $c := .Values.embeddingServing }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: embedding-serving-models
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: embedding-serving
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ $c.storage }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: embedding-serving
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: embedding-serving
+  annotations:
+    ai-platform/embedding-dimensions: {{ $c.dimensions | quote }}
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 1800   # 첫 모델 적재가 10분(기본값)을 넘을 수 있다
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: embedding-serving
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: embedding-serving
+    spec:
+      {{- include "ai-platform.gpuPlacement" . | nindent 6 }}
+      containers:
+        - name: ollama
+          image: {{ $c.image }}
+          ports:
+            - name: http
+              containerPort: 11434
+          env:
+            - name: OLLAMA_HOST
+              value: "0.0.0.0:11434"
+            - name: OLLAMA_NUM_PARALLEL
+              value: {{ $c.numParallel | quote }}
+            - name: OLLAMA_KEEP_ALIVE
+              value: "-1"
+            - name: MODEL_NAME
+              value: {{ $c.model | quote }}
+          resources:
+            requests:
+              {{- toYaml $c.resources.requests | nindent 14 }}
+            limits:
+              {{- toYaml $c.resources.limits | nindent 14 }}
+              nvidia.com/gpu: {{ $c.gpu }}
+          startupProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "ollama show \"$MODEL_NAME\" >/dev/null"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: models
+              mountPath: /root/.ollama
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: embedding-serving-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: embedding-serving
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: embedding-serving
+spec:
+  selector:
+    app.kubernetes.io/name: embedding-serving
+  ports:
+    - name: http
+      port: 11434
+      targetPort: http
+---
+# 관리용 Service (preload 전용, NotReady Pod에도 연결) — llm-serving.yaml 주석 참고
+apiVersion: v1
+kind: Service
+metadata:
+  name: embedding-serving-admin
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: embedding-serving
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: embedding-serving
+  ports:
+    - name: http
+      port: 11434
+      targetPort: http
+{{- end }}

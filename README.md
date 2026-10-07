@@ -10,7 +10,7 @@
 |---|---|---|
 | M0 | 환경 점검 (WSL2·Docker·GPU) | ✅ 완료 — [docs/00-environment.md](docs/00-environment.md) |
 | M1 | kind 4노드 클러스터·GPU 노드 | ✅ 완료 — Calico, GPU SIMULATED(`nvidia.com/gpu: 2`), 배치 검증 |
-| M2 | sLLM·임베딩 서빙 | ⬜ |
+| M2 | sLLM·임베딩 서빙 | ✅ 완료 — Ollama qwen2.5:3b + bge-m3(1024차원), CPU 벤치 동시 4개 처리량 34.8 토큰/s (vLLM 옵션은 미검증) |
 | M3 | 데이터 계층 (pgvector·MinIO·수집) | ⬜ |
 | M4 | 권한 기반 RAG + 에이전트 | ⬜ |
 | M5 | 네트워크·보안·폐쇄망 | ⬜ |
@@ -37,6 +37,7 @@ docs/           문서, docs/study/ 면접 노트, docs/images/ 캡처
 사전 준비: WSL2(Ubuntu) + Docker Desktop(WSL Integration ON), kubectl·kind·helm ([docs/00-environment.md](docs/00-environment.md))
 ```bash
 make up       # kind 4노드 + Calico + (SIMULATED) GPU 2개 등록
+make deploy   # ai-platform 차트 설치 + 모델 사전 적재 (첫 실행 시 이미지·모델 약 7GB 다운로드)
 make status   # 노드·Pod 상태
 make down     # 클러스터 삭제 (확인 질문 있음)
 ```

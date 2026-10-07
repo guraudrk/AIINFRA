@@ -11,7 +11,8 @@ down:      ## M1: kind 클러스터 삭제
 	./scripts/cluster-down.sh
 
 deploy:    ## M2~: Helm 차트 배포
-	@echo "TODO(M2): helm upgrade --install"
+	helm upgrade --install ai-platform charts/ai-platform -n ai-platform --create-namespace
+	./scripts/preload-models.sh
 
 ingest:    ## M3: 문서 수집 Job 실행
 	@echo "TODO(M3): apps/ingest Job"
