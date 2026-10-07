@@ -57,7 +57,11 @@ kubectl -n cert-manager get secret hanbit-root-ca -o jsonpath='{.data.ca\.crt}' 
 
 step "6. 비밀값 생성 · 플랫폼 차트 설치"
 ./scripts/create-secrets.sh
-helm upgrade --install ai-platform charts/ai-platform -n "$NS" --create-namespace --wait=false >/dev/null
+# digest 고정 이미지는 번들에서 "pinned-" 태그로 반입됐다 → 그 태그로 배포 (무결성은 0단계 SHA256으로 보장)
+MINIO_IMAGE=$(awk '/chainguard\/minio/ {print $2}' "$B/image-aliases.txt")
+helm upgrade --install ai-platform charts/ai-platform -n "$NS" --create-namespace --wait=false \
+  ${MINIO_IMAGE:+--set minio.image=$MINIO_IMAGE} >/dev/null
+echo "    MinIO 이미지: ${MINIO_IMAGE:-차트 기본값}"
 
 step "7. 모델 복원 (인터넷 다운로드 대신 반입 파일을 PVC에 풀기)"
 for svc in llm-serving embedding-serving; do

@@ -39,11 +39,22 @@ def doc_ids(resp):
     return {s["doc_id"] for s in resp["sources"]}
 
 
+def admin_sql(sql):
+    """관리자 계정으로 DB에 직접 질의 (검증용)"""
+    return subprocess.run(["kubectl", "-n", NS, "exec", "postgres-0", "--", "psql", "-U", "postgres", "-d", "hanbit",
+                           "-At", "-c", sql], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def db_now():
+    return admin_sql("SELECT now();")
+
+
 class TestRoleScopes(unittest.TestCase):
     """같은 질문, 역할별로 다른 응답 범위"""
 
     @classmethod
     def setUpClass(cls):
+        cls.started_at = db_now()                     # 감사 로그는 "이 테스트가 만든 기록"만 본다
         cls.r = {role: ask(role) for role in USERS}  # 역할당 1회만 호출 (CPU 추론이 느림)
         for role, resp in cls.r.items():
             print(f"\n[{role}] {resp['elapsed_sec']}s sources={sorted(doc_ids(resp))} "
@@ -92,6 +103,13 @@ class TestRoleScopes(unittest.TestCase):
         self.assertIn("QR-2026-003", ids)
         self.assertEqual(self.r["admin"]["denied"], [])
 
+    def test_worker_denial_is_audited(self):
+        """setUpClass에서 보낸 작업자 질문의 거부 기록이 감사 로그에 남았는지 (실행 순서·과거 기록과 무관)"""
+        rows = admin_sql(
+            "SELECT count(*) FROM audit_log WHERE user_id = 'worker01' AND 'query_maintenance' = ANY(denied) "
+            f"AND ts >= '{self.started_at}'::timestamptz;")
+        self.assertGreaterEqual(int(rows), 1)
+
 
 class TestGuardrails(unittest.TestCase):
     def test_unrelated_question_returns_unknown(self):
@@ -132,16 +150,6 @@ class TestDatabaseRLS(unittest.TestCase):
     def test_quality_can_select_quality_chunks(self):
         count = int(self.psql_as_app("quality", "SELECT count(*) FROM chunks WHERE access_level = 'quality';")[0])
         self.assertGreater(count, 0)
-
-
-class TestAuditLog(unittest.TestCase):
-    def test_worker_denial_is_audited(self):
-        rows = subprocess.run(
-            ["kubectl", "-n", NS, "exec", "postgres-0", "--", "psql", "-U", "postgres", "-d", "hanbit", "-At", "-c",
-             "SELECT count(*) FROM audit_log WHERE user_id = 'worker01' AND 'query_maintenance' = ANY(denied) "
-             "AND ts > now() - interval '30 minutes';"],
-            capture_output=True, text=True, check=True).stdout.strip()
-        self.assertGreaterEqual(int(rows), 1)
 
 
 if __name__ == "__main__":

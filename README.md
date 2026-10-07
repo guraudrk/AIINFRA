@@ -13,7 +13,7 @@
 | M2 | sLLM·임베딩 서빙 | ✅ 완료 — Ollama qwen2.5:3b + bge-m3(1024차원), CPU 벤치 동시 4개 처리량 34.8 토큰/s (vLLM 옵션은 미검증) |
 | M3 | 데이터 계층 (pgvector·MinIO·수집) | ✅ 완료 — 가상 문서 18개 → 청크 138개(1024차원), 정형 7개 테이블, 변경분 수집 CronJob |
 | M4 | 권한 기반 RAG + 에이전트 | ✅ 완료 — 역할 4개 × 도구 4개, 앱 필터 + PostgreSQL RLS 2중 통제, 감사 로그, 자동 테스트 14/14 통과 |
-| M5 | 네트워크·보안·폐쇄망 | ⬜ |
+| M5 | 네트워크·보안·폐쇄망 | ✅ 완료 — Traefik+TLS(사내 CA), NetworkPolicy 14/14, 폐쇄망 재구축 15분 21초 ([절차서](docs/airgap-install.md)) |
 | M6 | 모니터링·알람 | ⬜ |
 | M7 | 백업·복구 훈련 | ⬜ |
 | M8 | 장애 대응 런북 | ⬜ |
@@ -41,7 +41,13 @@ make images   # 앱 이미지 빌드 + kind 노드 적재
 make deploy   # Secret 생성 + ai-platform 차트 설치 + 모델 사전 적재 (첫 실행 시 이미지·모델 약 7GB 다운로드)
 make ingest   # 가상 데이터 → MinIO → 청크·임베딩 → pgvector
 make test     # 같은 질문을 4개 역할로 보내 권한 범위·RLS·감사 로그 자동 검증
-kubectl -n ai-platform port-forward svc/web-ui 8080:80   # 채팅 화면 http://localhost:8080
+./scripts/netpol-test.sh   # NetworkPolicy 허용·차단 표
+# 채팅 화면: https://localhost/  (사내 CA: infra/tls/hanbit-root-ca.crt)
+
+# 폐쇄망 리허설
+./scripts/airgap-bundle.sh                 # 반입 번들 생성 (인터넷 되는 쪽)
+FORCE=yes ./scripts/airgap-install.sh      # 클러스터 삭제 → 인터넷 차단 → 번들만으로 재구축
+./scripts/airgap-verify.sh                 # 인수 검증
 make status   # 노드·Pod 상태
 make down     # 클러스터 삭제 (확인 질문 있음)
 ```
