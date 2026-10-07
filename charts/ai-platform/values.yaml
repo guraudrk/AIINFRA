@@ -56,3 +56,44 @@ embeddingServing:
     limits:
       cpu: "4"
       memory: 2560Mi
+
+# ── 데이터 노드 배치 공통 설정 ───────────────────────────────
+dataNode:
+  nodeSelector:
+    node-role: data
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: data
+      effect: NoSchedule
+
+# ── PostgreSQL + pgvector ───────────────────────────────────
+# 비밀번호는 scripts/create-secrets.sh 가 만든 Secret(postgres-credentials)에서 읽는다
+postgres:
+  enabled: true
+  image: pgvector/pgvector:pg17
+  database: hanbit
+  storage: 5Gi
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits:   { cpu: "2",  memory: 1Gi }
+
+# ── MinIO (S3 호환 오브젝트 스토리지) ───────────────────────
+# 커뮤니티 공식 이미지 배포가 중단돼, 소스 빌드 이미지(Chainguard)를 digest로 고정한다
+minio:
+  enabled: true
+  image: cgr.dev/chainguard/minio@sha256:e7ca559d9f7c0b5f24f5f669bb92f40f3ca88d56273b808bf3a7c116c17d2ffa
+  storage: 10Gi
+  buckets: [raw-docs, backups]
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: "1",  memory: 1Gi }
+
+# ── 수집 파이프라인 (apps/ingest) ───────────────────────────
+ingest:
+  enabled: true
+  image: ax/ingest:0.1.0          # 로컬 빌드 후 kind load (scripts/build-images.sh)
+  schedule: "*/30 * * * *"        # 변경분 재수집 주기
+  chunkSize: 700                  # 청크 최대 글자 수
+  chunkOverlap: 100               # 청크끼리 겹치는 글자 수
+  embedBatch: 16

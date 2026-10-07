@@ -1,0 +1,11 @@
+equipment_id,name,type,line,model,install_year
+PRESS-01,프레스 1호기,press,A라인,HBP-800,2017
+PRESS-02,프레스 2호기,press,A라인,HBP-800,2018
+PRESS-03,프레스 3호기,press,A라인,HBP-800H,2019
+PRESS-04,프레스 4호기,press,A라인,HBP-800,2020
+PRESS-05,프레스 5호기,press,A라인,HBP-800,2021
+CNC-01,CNC 1호기,cnc,B라인,HBC-5X,2019
+CNC-02,CNC 2호기,cnc,B라인,HBC-5X,2020
+CNC-03,CNC 3호기,cnc,B라인,HBC-5X,2018
+CNC-04,CNC 4호기,cnc,B라인,HBC-5X,2019
+CNC-05,CNC 5호기,cnc,B라인,HBC-5X,2020

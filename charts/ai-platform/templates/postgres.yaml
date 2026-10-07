@@ -1,0 +1,189 @@
+{{- if .Values.postgres.enabled }}
+{{- $c := .Values.postgres }}
+# 초기화 스크립트: 데이터 디렉터리가 비어 있을 때(첫 기동) 한 번만 실행된다
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: postgres
+data:
+  # 1) 역할 생성: 비밀번호는 Secret에서 받은 환경변수로만 넣는다 (스크립트에 비밀값 없음)
+  01-roles.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    psql -v ON_ERROR_STOP=1 -U postgres -d {{ $c.database }} \
+      -v ingest_pw="$INGEST_PASSWORD" -v app_pw="$APP_PASSWORD" <<'SQL'
+    CREATE ROLE ax_ingest LOGIN PASSWORD :'ingest_pw';   -- 수집 파이프라인: 문서·정형 데이터 쓰기
+    CREATE ROLE ax_app    LOGIN PASSWORD :'app_pw';      -- 사내 AI 앱: 읽기 + 감사 로그 쓰기 (M4에서 RLS 적용)
+    SQL
+  # 2) 스키마
+  02-schema.sql: |
+    CREATE EXTENSION IF NOT EXISTS vector;
+
+    -- ── 비정형: 문서와 청크 ──────────────────────────────
+    CREATE TABLE documents (
+      doc_id        text PRIMARY KEY,
+      title         text NOT NULL,
+      dept          text NOT NULL,
+      access_level  text NOT NULL CHECK (access_level IN ('public','maintenance','quality','admin')),
+      version       text NOT NULL,
+      equipment_id  text,
+      source_key    text NOT NULL,          -- MinIO 객체 키 (raw-docs/docs/...)
+      content_hash  text NOT NULL,          -- 변경 감지용 (같으면 재수집 생략)
+      ingested_at   timestamptz NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE chunks (
+      id            bigserial PRIMARY KEY,
+      doc_id        text NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
+      chunk_index   int  NOT NULL,
+      section       text,
+      content       text NOT NULL,
+      embedding     vector({{ .Values.embeddingServing.dimensions }}) NOT NULL,  -- 임베딩 모델 차원과 같아야 함
+      access_level  text NOT NULL,          -- 문서 등급을 복사: 검색 시 조인 없이 바로 필터 (M4 RLS 기준)
+      dept          text NOT NULL,
+      UNIQUE (doc_id, chunk_index)
+    );
+    -- HNSW: 근사 최근접 이웃 인덱스. 코사인 거리 기준
+    CREATE INDEX chunks_embedding_hnsw ON chunks USING hnsw (embedding vector_cosine_ops);
+    CREATE INDEX chunks_access_level   ON chunks (access_level);
+
+    -- ── 정형: 설비·경보·부품·재고·정비 이력 ─────────────────
+    CREATE TABLE equipment (
+      equipment_id text PRIMARY KEY, name text NOT NULL, type text NOT NULL,
+      line text, model text, install_year int
+    );
+    CREATE TABLE alarm_codes (
+      equipment_type text NOT NULL, code text NOT NULL, title text NOT NULL,
+      category text, severity text, PRIMARY KEY (equipment_type, code)
+    );
+    CREATE TABLE parts (part_no text PRIMARY KEY, name text NOT NULL, category text);
+    CREATE TABLE stock (
+      part_no text PRIMARY KEY REFERENCES parts(part_no),
+      qty int NOT NULL, min_qty int NOT NULL, location text
+    );
+    CREATE TABLE maintenance_history (
+      record_id text PRIMARY KEY,
+      equipment_id text NOT NULL REFERENCES equipment(equipment_id),
+      work_date date NOT NULL, alarm_code text, work_type text NOT NULL,
+      description text, parts_used text, downtime_min int, technician text
+    );
+    CREATE INDEX mh_equipment_date ON maintenance_history (equipment_id, work_date DESC);
+
+    -- ── 온톨로지 라이트: 설비 ↔ 경보 ↔ 부품 ↔ 문서 관계 ─────────
+    CREATE TABLE alarm_parts (
+      equipment_type text NOT NULL, code text NOT NULL, part_no text NOT NULL REFERENCES parts(part_no),
+      PRIMARY KEY (equipment_type, code, part_no),
+      FOREIGN KEY (equipment_type, code) REFERENCES alarm_codes(equipment_type, code)
+    );
+    CREATE TABLE alarm_documents (
+      equipment_id text NOT NULL REFERENCES equipment(equipment_id),
+      code text NOT NULL, doc_id text NOT NULL,
+      PRIMARY KEY (equipment_id, code, doc_id)
+    );
+
+    -- ── 감사 로그 (M4에서 기록) ─────────────────────────────
+    CREATE TABLE audit_log (
+      id           bigserial PRIMARY KEY,
+      ts           timestamptz NOT NULL DEFAULT now(),
+      user_id      text NOT NULL,
+      role         text NOT NULL,
+      question     text NOT NULL,
+      doc_ids      text[] NOT NULL DEFAULT '{}',
+      tools        text[] NOT NULL DEFAULT '{}',
+      denied       text[] NOT NULL DEFAULT '{}',
+      result       text
+    );
+
+    -- ── 권한: 최소 권한 원칙 ─────────────────────────────────
+    -- TRUNCATE는 DELETE와 별도 권한이다 (정형 데이터 전체 재적재에 필요)
+    GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON documents, chunks, equipment, alarm_codes, parts, stock,
+          maintenance_history, alarm_parts, alarm_documents TO ax_ingest;
+    GRANT USAGE ON SEQUENCE chunks_id_seq TO ax_ingest;
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO ax_app;
+    GRANT INSERT ON audit_log TO ax_app;
+    GRANT USAGE ON SEQUENCE audit_log_id_seq TO ax_app;
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: postgres
+spec:
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+    spec:
+      {{- include "ai-platform.dataPlacement" . | nindent 6 }}
+      containers:
+        - name: postgres
+          image: {{ $c.image }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: {{ $c.database }}
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata   # 볼륨 루트가 아닌 하위 폴더 (권장 방식)
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: postgres-password } }
+            - name: INGEST_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: ingest-password } }
+            - name: APP_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: app-password } }
+          resources:
+            {{- toYaml $c.resources | nindent 12 }}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "{{ $c.database }}"]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init
+          configMap:
+            name: postgres-init
+  # StatefulSet은 Pod마다 전용 PVC를 만든다 (data-postgres-0)
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ $c.storage }}
+{{- end }}

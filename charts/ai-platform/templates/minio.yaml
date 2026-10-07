@@ -1,0 +1,78 @@
+{{- if .Values.minio.enabled }}
+{{- $c := .Values.minio }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: minio
+spec:
+  selector:
+    app.kubernetes.io/name: minio
+  ports:
+    - name: s3            # S3 API (앱·수집 파이프라인·백업이 사용)
+      port: 9000
+      targetPort: s3
+    - name: console       # 웹 관리 콘솔
+      port: 9001
+      targetPort: console
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: minio
+spec:
+  serviceName: minio
+  replicas: 1             # 단일 노드 모드 (운영은 4노드 이상 분산 모드 + 이레이저 코딩)
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: minio
+    spec:
+      {{- include "ai-platform.dataPlacement" . | nindent 6 }}
+      securityContext:
+        fsGroup: 65532    # 이미지가 비root(65532)로 실행된다
+      containers:
+        - name: minio
+          image: {{ $c.image }}
+          args: ["server", "/data", "--console-address", ":9001"]
+          ports:
+            - name: s3
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom: { secretKeyRef: { name: minio-credentials, key: root-user } }
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom: { secretKeyRef: { name: minio-credentials, key: root-password } }
+            - name: MINIO_PROMETHEUS_AUTH_TYPE
+              value: public   # M6에서 Prometheus가 지표를 수집
+          resources:
+            {{- toYaml $c.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /minio/health/ready, port: s3 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /minio/health/live, port: s3 }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ $c.storage }}
+{{- end }}

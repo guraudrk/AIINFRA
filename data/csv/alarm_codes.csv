@@ -1,0 +1,17 @@
+equipment_type,code,title,category,severity
+press,E-101,메인 모터 과부하,전기,high
+press,E-102,비상정지 회로 작동,전기,critical
+press,E-115,PLC 통신 이상,전기,medium
+press,E-201,유압유 온도 상승,유압,medium
+press,E-203,유압 압력 저하,유압,high
+press,E-210,공압 압력 저하(클러치·브레이크),공압,high
+press,E-301,금형 높이 이상,기계,medium
+press,E-305,안전 광커튼 차단,안전,critical
+cnc,E-101,스핀들 모터 과부하,전기,high
+cnc,E-104,서보 드라이브 알람,전기,high
+cnc,E-120,NC 통신 이상,전기,medium
+cnc,E-202,절삭유 압력 저하,윤활,medium
+cnc,E-207,윤활유 부족,윤활,low
+cnc,E-211,공압 압력 저하(공구 클램프),공압,high
+cnc,E-302,공구 마모 한계 초과,기계,low
+cnc,E-308,도어 인터록 열림,안전,critical

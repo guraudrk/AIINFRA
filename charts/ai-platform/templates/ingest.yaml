@@ -1,0 +1,61 @@
+{{- if .Values.ingest.enabled }}
+{{- $c := .Values.ingest }}
+# 변경분 재수집: 주기적으로 실행되며, 내용 해시가 같은 문서는 건너뛴다.
+# 1회 즉시 실행은 `kubectl create job --from=cronjob/ingest ...` (make ingest)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ingest
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: ingest
+spec:
+  schedule: {{ $c.schedule | quote }}
+  concurrencyPolicy: Forbid          # 이전 실행이 안 끝났으면 새로 시작하지 않음
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ingest
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: ingest
+              image: {{ $c.image }}
+              imagePullPolicy: IfNotPresent   # kind load 로 넣은 로컬 이미지 사용
+              args: ["all"]
+              env:
+                - name: S3_ENDPOINT
+                  value: http://minio:9000
+                - name: S3_ACCESS_KEY
+                  valueFrom: { secretKeyRef: { name: minio-credentials, key: root-user } }
+                - name: S3_SECRET_KEY
+                  valueFrom: { secretKeyRef: { name: minio-credentials, key: root-password } }
+                - name: PGHOST
+                  value: postgres
+                - name: PGDATABASE
+                  value: {{ .Values.postgres.database }}
+                - name: PGUSER
+                  value: ax_ingest
+                - name: PGPASSWORD
+                  valueFrom: { secretKeyRef: { name: postgres-credentials, key: ingest-password } }
+                - name: EMBED_URL
+                  value: http://embedding-serving:11434
+                - name: EMBED_MODEL
+                  value: {{ .Values.embeddingServing.model | quote }}
+                - name: EMBED_DIM
+                  value: {{ .Values.embeddingServing.dimensions | quote }}
+                - name: EMBED_BATCH
+                  value: {{ $c.embedBatch | quote }}
+                - name: CHUNK_SIZE
+                  value: {{ $c.chunkSize | quote }}
+                - name: CHUNK_OVERLAP
+                  value: {{ $c.chunkOverlap | quote }}
+              resources:
+                requests: { cpu: 100m, memory: 128Mi }
+                limits:   { cpu: "1",  memory: 512Mi }
+{{- end }}

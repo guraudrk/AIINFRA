@@ -12,3 +12,11 @@ nodeSelector:
 tolerations:
   {{- toYaml .Values.gpuNode.tolerations | nindent 2 }}
 {{- end }}
+
+{{/* 데이터 노드 배치 (nodeSelector + tolerations) */}}
+{{- define "ai-platform.dataPlacement" -}}
+nodeSelector:
+  {{- toYaml .Values.dataNode.nodeSelector | nindent 2 }}
+tolerations:
+  {{- toYaml .Values.dataNode.tolerations | nindent 2 }}
+{{- end }}
