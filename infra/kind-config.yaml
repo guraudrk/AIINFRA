@@ -1,0 +1,51 @@
+# AX Platform Lab — kind 4노드 클러스터
+# 실제 GPU 클러스터처럼 노드 역할을 나눈다: 관리(control-plane) / 앱 / GPU / 데이터
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: ax-lab
+networking:
+  # NetworkPolicy를 실제로 적용하려고 kindnet 대신 Calico를 설치한다 (M5에서 사용)
+  disableDefaultCNI: true
+  podSubnet: 192.168.0.0/16   # Calico 기본 IP 풀과 맞춤
+nodes:
+  - role: control-plane
+    labels:
+      ingress-ready: "true"   # ingress-nginx(kind용)가 이 라벨 노드에 뜬다 (M5)
+    extraPortMappings:        # Windows 브라우저에서 localhost:80/443으로 접속
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+
+  # 앱 노드: ax-gateway, web-ui 등 일반 워크로드. taint 없음
+  - role: worker
+    labels:
+      node-role: app
+
+  # GPU 노드: GPU가 필요한 Pod(toleration 보유)만 들어오도록 taint
+  - role: worker
+    labels:
+      node-role: gpu
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          taints:
+            - key: nvidia.com/gpu
+              value: present
+              effect: NoSchedule
+
+  # 데이터 노드: PostgreSQL, MinIO 같은 상태 저장 워크로드 전용
+  - role: worker
+    labels:
+      node-role: data
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          taints:
+            - key: dedicated
+              value: data
+              effect: NoSchedule

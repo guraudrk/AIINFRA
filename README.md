@@ -9,7 +9,7 @@
 | 모듈 | 내용 | 상태 |
 |---|---|---|
 | M0 | 환경 점검 (WSL2·Docker·GPU) | ✅ 완료 — [docs/00-environment.md](docs/00-environment.md) |
-| M1 | kind 4노드 클러스터·GPU 노드 | ⬜ |
+| M1 | kind 4노드 클러스터·GPU 노드 | ✅ 완료 — Calico, GPU SIMULATED(`nvidia.com/gpu: 2`), 배치 검증 |
 | M2 | sLLM·임베딩 서빙 | ⬜ |
 | M3 | 데이터 계층 (pgvector·MinIO·수집) | ⬜ |
 | M4 | 권한 기반 RAG + 에이전트 | ⬜ |
@@ -34,4 +34,9 @@ docs/           문서, docs/study/ 면접 노트, docs/images/ 캡처
 ```
 
 ## 빠른 시작
-(M1 이후 작성)
+사전 준비: WSL2(Ubuntu) + Docker Desktop(WSL Integration ON), kubectl·kind·helm ([docs/00-environment.md](docs/00-environment.md))
+```bash
+make up       # kind 4노드 + Calico + (SIMULATED) GPU 2개 등록
+make status   # 노드·Pod 상태
+make down     # 클러스터 삭제 (확인 질문 있음)
+```

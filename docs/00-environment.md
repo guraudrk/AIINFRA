@@ -30,10 +30,11 @@
 | 컨테이너에서 GPU 사용 | `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi` | ✅ 컨테이너 안에서 RTX 4060 인식 |
 | 사용 가능한 VRAM | `nvidia-smi --query-gpu=memory.used,memory.total --format=csv` | ⚠️ 8188 MiB 중 약 5200 MiB를 Windows 화면·앱이 이미 사용 → **실제 여유 약 3 GB** |
 
-## GPU 모드: **REAL** (조건부)
-- Docker 레벨 GPU 사용은 검증 완료.
-- kind 노드(컨테이너) 안까지 GPU를 노출해 device plugin이 `nvidia.com/gpu`를 광고하는지는 **M1에서 검증**한다.
-  실패하거나 불안정하면 **SIMULATED**(fake-gpu.sh로 extended resource 패치)로 폴백하고, 이 표를 갱신한다.
+## GPU 모드: **SIMULATED** (M1에서 결정, 2026-10-07)
+- Docker 레벨 GPU 사용(REAL)은 검증 완료.
+- kind 클러스터에서는 **SIMULATED**: `scripts/fake-gpu.sh`로 worker-gpu에 `nvidia.com/gpu: 2`를 등록한다. LLM 추론은 CPU.
+  - 이유: WSL2는 GPU를 `/dev/dxg`로 노출해서 kind 노드 안 device plugin 동작이 불확실하고, 면접 일정상 M4·M8을 우선했다.
+  - M4 이후 시간이 남으면 REAL(Docker 기본 런타임 nvidia + device plugin)을 보너스로 시도한다.
 
 ## 추천 모델 크기
 | 용도 | 추천 | 크기 근거 | 폴백 |

@@ -5,10 +5,10 @@ help:
 	@echo "make up | down | deploy | ingest | backup | restore | chaos SCENARIO=N | status"
 
 up:        ## M1: kind 클러스터 생성
-	@echo "TODO(M1): scripts/cluster-up.sh"
+	./scripts/cluster-up.sh
 
 down:      ## M1: kind 클러스터 삭제
-	@echo "TODO(M1): scripts/cluster-down.sh"
+	./scripts/cluster-down.sh
 
 deploy:    ## M2~: Helm 차트 배포
 	@echo "TODO(M2): helm upgrade --install"
@@ -26,4 +26,5 @@ chaos:     ## M8: 장애 주입 (make chaos SCENARIO=1)
 	@echo "TODO(M8): scripts/chaos/$(SCENARIO)"
 
 status:    ## 클러스터 상태 요약
-	@echo "TODO(M1): kubectl get nodes,pods -A"
+	kubectl get nodes -L node-role
+	kubectl get pods -A -o wide

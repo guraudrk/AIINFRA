@@ -1,0 +1,60 @@
+# M1 배치 검증용 Pod 3종 (namespace: placement-test)
+# 1) gpu-ok      : GPU 1개 요청 + toleration   → worker-gpu 에 배치되어야 함
+# 2) gpu-no-tol  : GPU 1개 요청, toleration 없음 → Pending (GPU가 있는 유일한 노드에 taint)
+# 3) data-ok     : data 노드 지정 + toleration  → worker-data 에 배치되어야 함
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: placement-test
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-ok
+  namespace: placement-test
+spec:
+  nodeSelector:
+    node-role: gpu
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: main
+      image: busybox:1.36
+      command: ["sh", "-c", "echo GPU Pod on $(hostname); sleep 3600"]
+      resources:
+        limits:
+          nvidia.com/gpu: 1   # 확장 리소스는 limits만 써도 requests가 같은 값으로 잡힌다
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-no-tol
+  namespace: placement-test
+spec:
+  containers:
+    - name: main
+      image: busybox:1.36
+      command: ["sh", "-c", "sleep 3600"]
+      resources:
+        limits:
+          nvidia.com/gpu: 1
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: data-ok
+  namespace: placement-test
+spec:
+  nodeSelector:
+    node-role: data
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: data
+      effect: NoSchedule
+  containers:
+    - name: main
+      image: busybox:1.36
+      command: ["sh", "-c", "sleep 3600"]
