@@ -1,0 +1,104 @@
+{{- if .Values.axGateway.enabled }}
+{{- $c := .Values.axGateway }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ax-gateway
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: ax-gateway
+spec:
+  replicas: {{ $c.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ax-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ax-gateway
+    spec:
+      nodeSelector:
+        node-role: app
+      containers:
+        - name: gateway
+          image: {{ $c.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: LLM_URL
+              value: http://llm-serving:11434
+            - name: LLM_MODEL
+              value: {{ .Values.llmServing.model | quote }}
+            - name: EMBED_URL
+              value: http://embedding-serving:11434
+            - name: EMBED_MODEL
+              value: {{ .Values.embeddingServing.model | quote }}
+            - name: PGHOST
+              value: postgres
+            - name: PGDATABASE
+              value: {{ .Values.postgres.database }}
+            - name: PGUSER
+              value: ax_app                    # RLS 대상 계정 (superuser 아님, BYPASSRLS 없음)
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: app-password } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: gateway-secrets, key: jwt-secret } }
+            - name: DEMO_PASSWORD
+              valueFrom: { secretKeyRef: { name: gateway-secrets, key: demo-password } }
+            - name: APP_FILTER_ENABLED
+              value: {{ $c.appFilterEnabled | quote }}   # false로 바꿔도 DB RLS가 막아야 한다 (M8 시나리오 7)
+            - name: AGENT_MODE
+              value: {{ $c.agentMode | quote }}
+            - name: TOP_K
+              value: {{ $c.topK | quote }}
+            - name: MAX_DISTANCE
+              value: {{ $c.maxDistance | quote }}
+          resources:
+            {{- toYaml $c.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }   # DB에 붙을 수 있어야 트래픽을 받는다
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }  # DB 장애로는 재시작하지 않는다 (재시작해도 안 고쳐지므로)
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ax-gateway
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: ax-gateway
+spec:
+  selector:
+    app.kubernetes.io/name: ax-gateway
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+# HPA: CPU 사용률 기준으로 게이트웨이 레플리카 자동 조정 (metrics-server 필요)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ax-gateway
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ax-gateway
+  minReplicas: {{ $c.hpa.minReplicas }}
+  maxReplicas: {{ $c.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $c.hpa.cpuUtilization }}   # requests.cpu 대비 %
+{{- end }}

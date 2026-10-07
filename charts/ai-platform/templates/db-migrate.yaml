@@ -1,0 +1,96 @@
+{{- if .Values.postgres.enabled }}
+# DB 마이그레이션: helm install/upgrade 직후 매번 실행 (SQL은 여러 번 실행해도 같은 결과 = 멱등)
+# 초기화 스크립트(postgres-init)는 첫 기동 때만 돌기 때문에, 이후 스키마·권한 변경은 여기에 쌓는다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-migrations
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  001-grants.sql: |
+    -- M3에서 빠뜨렸던 TRUNCATE 권한 (DELETE와 별도 권한)
+    GRANT TRUNCATE ON documents, chunks, equipment, alarm_codes, parts, stock,
+          maintenance_history, alarm_parts, alarm_documents TO ax_ingest;
+
+  002-rls.sql: |
+    -- ── M4: 행 수준 보안(RLS) ─────────────────────────────────
+    -- 앱은 요청마다 트랜잭션 안에서 set_config('app.role', '<역할>', true) 를 호출한다.
+    -- 역할이 설정되지 않으면 빈 배열 → 아무 행도 보이지 않는다 (기본 거부).
+    CREATE OR REPLACE FUNCTION app_allowed_levels() RETURNS text[]
+    LANGUAGE sql STABLE AS $$
+      SELECT CASE current_setting('app.role', true)
+        WHEN 'admin'       THEN ARRAY['public','maintenance','quality','admin']
+        WHEN 'maintenance' THEN ARRAY['public','maintenance']
+        WHEN 'quality'     THEN ARRAY['public','quality']
+        WHEN 'worker'      THEN ARRAY['public']
+        ELSE ARRAY[]::text[]
+      END
+    $$;
+
+    ALTER TABLE documents           ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE chunks              ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE maintenance_history ENABLE ROW LEVEL SECURITY;
+
+    -- 앱(ax_app): 역할에 허용된 등급의 문서·청크만 조회
+    DROP POLICY IF EXISTS app_read ON documents;
+    CREATE POLICY app_read ON documents FOR SELECT TO ax_app
+      USING (access_level = ANY (app_allowed_levels()));
+    DROP POLICY IF EXISTS app_read ON chunks;
+    CREATE POLICY app_read ON chunks FOR SELECT TO ax_app
+      USING (access_level = ANY (app_allowed_levels()));
+    -- 정비 이력: 설비보전·관리자만
+    DROP POLICY IF EXISTS app_read ON maintenance_history;
+    CREATE POLICY app_read ON maintenance_history FOR SELECT TO ax_app
+      USING (current_setting('app.role', true) IN ('maintenance', 'admin'));
+
+    -- 수집 파이프라인(ax_ingest): RLS가 켜진 테이블도 전부 쓰고 읽을 수 있어야 한다
+    DROP POLICY IF EXISTS ingest_all ON documents;
+    CREATE POLICY ingest_all ON documents TO ax_ingest USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS ingest_all ON chunks;
+    CREATE POLICY ingest_all ON chunks TO ax_ingest USING (true) WITH CHECK (true);
+    DROP POLICY IF EXISTS ingest_all ON maintenance_history;
+    CREATE POLICY ingest_all ON maintenance_history TO ax_ingest USING (true) WITH CHECK (true);
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: db-migrate
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 6          # 첫 설치 시 postgres가 뜰 때까지 재시도
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: {{ .Values.postgres.image }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              until pg_isready -h postgres -U postgres; do sleep 3; done
+              for f in /migrations/*.sql; do
+                echo "[migrate] $f"
+                psql -v ON_ERROR_STOP=1 -h postgres -U postgres -d {{ .Values.postgres.database }} -f "$f" || exit 1
+              done
+          env:
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: postgres-password } }
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+      volumes:
+        - name: migrations
+          configMap:
+            name: db-migrations
+{{- end }}

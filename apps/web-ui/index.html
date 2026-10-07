@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>한빛정밀 AI 어시스턴트</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1d2330; --muted:#6b7280; --line:#e3e6eb;
+          --brand:#1f5fbf; --ok:#0f7b45; --warn:#b45309; --deny:#b42318; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: "Pretendard","Malgun Gothic",system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  header { background:var(--brand); color:#fff; padding:12px 20px; display:flex; justify-content:space-between; align-items:center; }
+  header h1 { font-size:18px; margin:0; }
+  main { max-width:880px; margin:0 auto; padding:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:12px; }
+  label { font-size:13px; color:var(--muted); }
+  select, input, textarea, button { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
+  button { background:var(--brand); color:#fff; border:none; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
+  .msg-q { font-weight:600; margin-bottom:8px; }
+  .answer { white-space:pre-wrap; line-height:1.6; }
+  .meta { margin-top:10px; font-size:13px; color:var(--muted); }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; margin:2px 4px 2px 0; border:1px solid var(--line); }
+  .b-tool { color:var(--ok); border-color:#b7e1c9; background:#effaf3; }
+  .b-deny { color:var(--deny); border-color:#f3c3be; background:#fdf1f0; }
+  .b-lvl-public { background:#eef2ff; } .b-lvl-maintenance { background:#ecfdf5; } .b-lvl-quality { background:#fff7ed; }
+  table { border-collapse:collapse; width:100%; font-size:13px; margin-top:6px; }
+  td, th { border-bottom:1px solid var(--line); padding:4px 6px; text-align:left; }
+  #who { font-size:14px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>한빛정밀 AI 어시스턴트 <span style="font-weight:400;font-size:13px">(가상 데모)</span></h1>
+  <div id="who">로그인 필요</div>
+</header>
+<main>
+  <section class="card" id="login">
+    <div class="row">
+      <div><label>사용자</label><br>
+        <select id="username">
+          <option value="worker01">worker01 · 생산팀 작업자</option>
+          <option value="maint01">maint01 · 설비보전팀 정비원</option>
+          <option value="quality01">quality01 · 품질팀 담당자</option>
+          <option value="admin01">admin01 · 공장 관리자</option>
+        </select></div>
+      <div><label>비밀번호</label><br><input id="password" type="password" placeholder="데모 비밀번호"></div>
+      <button id="loginBtn">로그인</button>
+    </div>
+    <div class="meta" id="loginMsg"></div>
+  </section>
+
+  <section class="card hidden" id="ask">
+    <div class="row">
+      <textarea id="question" rows="2" style="flex:1;min-width:260px">3호기 E-203 대응 방법과 최근 정비 이력 알려줘</textarea>
+      <button id="askBtn">질문</button>
+      <button id="logoutBtn" style="background:#6b7280">로그아웃</button>
+    </div>
+    <div class="meta">CPU로 추론해서 답변까지 20~60초 걸릴 수 있습니다.</div>
+  </section>
+
+  <div id="log"></div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let token = sessionStorage.getItem("token");
+let user = JSON.parse(sessionStorage.getItem("user") || "null");
+
+function render() {
+  $("login").classList.toggle("hidden", !!token);
+  $("ask").classList.toggle("hidden", !token);
+  $("who").textContent = user ? `${user.name} · 역할 ${user.role} · ${user.dept}` : "로그인 필요";
+}
+
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+$("loginBtn").onclick = async () => {
+  const r = await fetch("/api/login", { method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ username:$("username").value, password:$("password").value }) });
+  const data = await r.json();
+  if (!r.ok) { $("loginMsg").textContent = data.detail || "로그인 실패"; return; }
+  token = data.token; user = data.user;
+  sessionStorage.setItem("token", token); sessionStorage.setItem("user", JSON.stringify(user));
+  $("log").innerHTML = ""; render();
+};
+
+$("logoutBtn").onclick = () => { sessionStorage.clear(); token = null; user = null; $("log").innerHTML = ""; render(); };
+
+function resultTable(tool, rows) {
+  if (!Array.isArray(rows) || !rows.length) return rows && rows.error ? `<div class="meta">${esc(tool)}: ${esc(rows.error)}</div>` : "";
+  const cols = Object.keys(rows[0]);
+  return `<div class="meta"><b>${esc(tool)}</b></div><table><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join("")}</tr>` +
+    rows.map(r => `<tr>${cols.map(c=>`<td>${esc(r[c])}</td>`).join("")}</tr>`).join("") + "</table>";
+}
+
+$("askBtn").onclick = async () => {
+  const q = $("question").value.trim(); if (!q) return;
+  $("askBtn").disabled = true;
+  const card = document.createElement("section"); card.className = "card";
+  card.innerHTML = `<div class="msg-q">Q. ${esc(q)}</div><div class="answer">답변 생성 중...</div>`;
+  $("log").prepend(card);
+  try {
+    const r = await fetch("/api/chat", { method:"POST",
+      headers:{"Content-Type":"application/json", "Authorization":`Bearer ${token}`}, body: JSON.stringify({ question:q }) });
+    const d = await r.json();
+    if (!r.ok) { card.querySelector(".answer").textContent = d.detail || "오류"; return; }
+    card.querySelector(".answer").textContent = d.answer;
+    const sources = d.sources.length
+      ? d.sources.map(s => `<span class="badge b-lvl-${esc(s.access_level)}">${esc(s.access_level)}</span> <b>${esc(s.doc_id)}</b> v${esc(s.version)} ${esc(s.title)} &gt; ${esc(s.section)} <span style="color:#9ca3af">(${s.distance})</span>`).join("<br>")
+      : "없음";
+    let tables = "";
+    if (d.results) for (const [tool, rows] of Object.entries(d.results)) {
+      tables += tool === "draft_ticket" ? resultTable("정비 요청서 초안", [rows]) : resultTable(tool, rows);
+    }
+    card.insertAdjacentHTML("beforeend", `<div class="meta"><b>출처</b><br>${sources}</div>
+      <div class="meta"><b>도구</b> ${d.tools_used.map(t=>`<span class="badge b-tool">${esc(t)}</span>`).join("")}
+      ${d.denied.map(t=>`<span class="badge b-deny">거부: ${esc(t)}</span>`).join("")}
+      · ${esc(user.role)} · ${d.elapsed_sec}초 · 모드 ${esc(d.mode)}</div>${tables}`);
+  } catch (e) { card.querySelector(".answer").textContent = "요청 실패: " + e; }
+  finally { $("askBtn").disabled = false; }
+};
+render();
+</script>
+</body>
+</html>

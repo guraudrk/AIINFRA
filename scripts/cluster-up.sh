@@ -21,6 +21,11 @@ echo "[cluster-up] CNI가 올라와 모든 노드가 Ready 될 때까지 대기"
 kubectl -n kube-system rollout status daemonset/calico-node --timeout=300s
 kubectl wait --for=condition=Ready nodes --all --timeout=300s
 
+echo "[cluster-up] metrics-server 설치 (HPA·kubectl top 용, kind는 kubelet 인증서가 자체 서명이라 --kubelet-insecure-tls)"
+kubectl apply -f "https://github.com/kubernetes-sigs/metrics-server/releases/download/${METRICS_SERVER_VERSION:-v0.9.0}/components.yaml" >/dev/null
+kubectl -n kube-system patch deployment metrics-server --type=json \
+  -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]' >/dev/null 2>&1 || true
+
 if [[ "$GPU_MODE" == "SIMULATED" ]]; then
   ./scripts/fake-gpu.sh 2
 fi

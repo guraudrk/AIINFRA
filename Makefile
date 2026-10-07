@@ -1,8 +1,8 @@
 # AX Platform Lab — 진입점. 각 타깃은 해당 모듈에서 채운다.
-.PHONY: help up down images secrets deploy ingest backup restore chaos status
+.PHONY: help up down images secrets deploy ingest test backup restore chaos status
 
 help:
-	@echo "make up | down | images | secrets | deploy | ingest | backup | restore | chaos SCENARIO=N | status"
+	@echo "make up | down | images | secrets | deploy | ingest | test | backup | restore | chaos SCENARIO=N | status"
 
 up:        ## M1: kind 클러스터 생성
 	./scripts/cluster-up.sh
@@ -22,6 +22,9 @@ deploy: secrets  ## M2~: Helm 차트 배포
 
 ingest:    ## M3: 문서 수집 Job 실행
 	./scripts/ingest.sh
+
+test:      ## M4: 역할별 권한 자동 테스트
+	./scripts/run-tests.sh
 
 backup:    ## M7: 즉시 백업
 	@echo "TODO(M7): pg-backup"

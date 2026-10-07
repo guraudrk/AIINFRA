@@ -28,3 +28,6 @@ create_if_missing postgres-credentials \
 create_if_missing minio-credentials \
   --from-literal=root-user="hanbit-admin" \
   --from-literal=root-password="$(rand)"
+
+# 게이트웨이: JWT 서명 키, 데모 사용자 공용 비밀번호
+create_if_missing gateway-secrets   --from-literal=jwt-secret="$(openssl rand -hex 32)"   --from-literal=demo-password="$(rand | cut -c1-12)"

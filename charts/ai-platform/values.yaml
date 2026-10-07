@@ -97,3 +97,27 @@ ingest:
   chunkSize: 700                  # 청크 최대 글자 수
   chunkOverlap: 100               # 청크끼리 겹치는 글자 수
   embedBatch: 16
+
+# ── 사내 AI 게이트웨이 (apps/ax-gateway) ────────────────────
+axGateway:
+  enabled: true
+  image: ax/ax-gateway:0.1.2
+  replicas: 1
+  agentMode: rules           # rules(규칙 기반 라우팅 + LLM 요약) | llm(LLM 도구 호출)
+  appFilterEnabled: true     # (a) 앱 권한 필터. false여도 (b) DB RLS가 막는다
+  topK: 5
+  # 코사인 거리 상한: 이보다 먼 청크는 근거로 쓰지 않음 ("모른다" 판단)
+  # 실측(M4): 관련 질문 0.37~0.55, 무관한 질문 0.58~0.67 → 그 사이 0.56
+  maxDistance: 0.56
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: "1",  memory: 512Mi }
+  hpa:
+    minReplicas: 1
+    maxReplicas: 3
+    cpuUtilization: 70
+
+# ── 채팅 화면 (apps/web-ui) ─────────────────────────────────
+webUi:
+  enabled: true
+  image: ax/web-ui:0.1.0

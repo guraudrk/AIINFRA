@@ -12,7 +12,7 @@
 | M1 | kind 4노드 클러스터·GPU 노드 | ✅ 완료 — Calico, GPU SIMULATED(`nvidia.com/gpu: 2`), 배치 검증 |
 | M2 | sLLM·임베딩 서빙 | ✅ 완료 — Ollama qwen2.5:3b + bge-m3(1024차원), CPU 벤치 동시 4개 처리량 34.8 토큰/s (vLLM 옵션은 미검증) |
 | M3 | 데이터 계층 (pgvector·MinIO·수집) | ✅ 완료 — 가상 문서 18개 → 청크 138개(1024차원), 정형 7개 테이블, 변경분 수집 CronJob |
-| M4 | 권한 기반 RAG + 에이전트 | ⬜ |
+| M4 | 권한 기반 RAG + 에이전트 | ✅ 완료 — 역할 4개 × 도구 4개, 앱 필터 + PostgreSQL RLS 2중 통제, 감사 로그, 자동 테스트 14/14 통과 |
 | M5 | 네트워크·보안·폐쇄망 | ⬜ |
 | M6 | 모니터링·알람 | ⬜ |
 | M7 | 백업·복구 훈련 | ⬜ |
@@ -40,6 +40,8 @@ make up       # kind 4노드 + Calico + (SIMULATED) GPU 2개 등록
 make images   # 앱 이미지 빌드 + kind 노드 적재
 make deploy   # Secret 생성 + ai-platform 차트 설치 + 모델 사전 적재 (첫 실행 시 이미지·모델 약 7GB 다운로드)
 make ingest   # 가상 데이터 → MinIO → 청크·임베딩 → pgvector
+make test     # 같은 질문을 4개 역할로 보내 권한 범위·RLS·감사 로그 자동 검증
+kubectl -n ai-platform port-forward svc/web-ui 8080:80   # 채팅 화면 http://localhost:8080
 make status   # 노드·Pod 상태
 make down     # 클러스터 삭제 (확인 질문 있음)
 ```

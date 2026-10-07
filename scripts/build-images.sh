@@ -14,3 +14,5 @@ build() {
 }
 
 build ax/ingest:0.1.0 apps/ingest
+build ax/ax-gateway:0.1.2 apps/ax-gateway
+build ax/web-ui:0.1.0 apps/web-ui
