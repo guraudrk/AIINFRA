@@ -77,10 +77,15 @@ def load_structured():
         cur.execute("TRUNCATE " + ", ".join(reversed(CSV_TABLES)))
         for table in CSV_TABLES:
             body = client.get_object(Bucket=BUCKET, Key=f"csv/{table}.csv")["Body"].read().decode("utf-8")
-            header = next(csv.reader(io.StringIO(body)))
-            with cur.copy(f"COPY {table} ({', '.join(header)}) FROM STDIN WITH (FORMAT csv, HEADER true)") as cp:
+            cols = ", ".join(next(csv.reader(io.StringIO(body))))
+            # RLS가 켜진 테이블에는 COPY를 직접 쓸 수 없다(M4 이후 maintenance_history).
+            # 임시 테이블에 COPY로 빠르게 넣고 INSERT ... SELECT 로 옮기면 RLS 정책을 그대로 거친다.
+            cur.execute(f"CREATE TEMP TABLE tmp_load (LIKE {table}) ON COMMIT DROP")
+            with cur.copy(f"COPY tmp_load ({cols}) FROM STDIN WITH (FORMAT csv, HEADER true)") as cp:
                 cp.write(body)
-            log("table_loaded", table=table, rows=body.count("\n") - 1)
+            cur.execute(f"INSERT INTO {table} ({cols}) SELECT {cols} FROM tmp_load")
+            log("table_loaded", table=table, rows=cur.rowcount)
+            cur.execute("DROP TABLE tmp_load")
 
 
 # ── docs ────────────────────────────────────────────────────

@@ -81,6 +81,7 @@ FastAPI 게이트웨이에 로그인(JWT), 질문 해석, 도구 4개(문서 검
 - **/metrics**: 요청 수(역할·결과별), 응답 시간과 LLM 시간 히스토그램, 도구 호출 수, 권한 거부 수, 검색 수와 근거 0건 수(→ 검색 0건 비율).
 - **HPA**: ax-gateway CPU 70% 기준 1~3개. metrics-server를 설치해 `cpu: 3%/70%`를 읽는 것을 확인했다.
 - **겪은 문제**: 에이전트 모드를 비교하려고 `kubectl set env`로 값을 바꿨더니 다음 `helm upgrade`가 `conflict with "kubectl-set"`으로 실패했다. Helm 4의 server-side apply가 필드별 관리자를 기록하기 때문이다. `--show-managed-fields`로 관리자 목록을 확인하고 `--force-conflicts`로 소유권을 되찾았다. 교훈은 **Helm이 관리하는 리소스는 Helm으로만 바꾼다**는 것이다(M8 장애 주입도 `helm --set`으로 한다).
+- **겪은 문제 2 — 보안 강화가 배치를 깨뜨린 회귀**: M4를 마친 뒤 30분마다 도는 수집 CronJob이 3회 연속 실패했다. 로그는 `COPY FROM not supported with row-level security`였다. maintenance_history에 RLS를 켜면서 M3의 COPY 적재가 막힌 것이다. M4 테스트는 읽기 권한만 검증해서 이걸 못 잡았다. 적재가 하나의 트랜잭션이라 실패하면 TRUNCATE까지 롤백돼서 데이터(정비 이력 200건)는 그대로였다. **임시 테이블에 COPY → `INSERT ... SELECT`**로 바꿔 RLS 정책을 거치게 했다. 수집 계정에 BYPASSRLS를 주는 쉬운 길은 보안을 약하게 해서 택하지 않았다. 교훈: 권한 변경 후에는 **쓰기 경로(배치)까지 회귀 테스트**하고, CronJob 실패를 알람으로 받아야 한다(M6 알람 항목에 반영).
 
 ## 실제 기업 환경에서는
 - **사용자 인증은 사내 SSO**(Active Directory/LDAP, Keycloak, Azure AD의 OIDC·SAML)와 연동하고, 역할·부서는 인사 시스템이나 AD 그룹에서 가져온다. 데모용 공유 비밀번호는 쓰지 않는다.

@@ -92,7 +92,7 @@ minio:
 # ── 수집 파이프라인 (apps/ingest) ───────────────────────────
 ingest:
   enabled: true
-  image: ax/ingest:0.1.0          # 로컬 빌드 후 kind load (scripts/build-images.sh)
+  image: ax/ingest:0.1.1          # 로컬 빌드 후 kind load (scripts/build-images.sh)
   schedule: "*/30 * * * *"        # 변경분 재수집 주기
   chunkSize: 700                  # 청크 최대 글자 수
   chunkOverlap: 100               # 청크끼리 겹치는 글자 수
