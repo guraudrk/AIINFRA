@@ -24,3 +24,6 @@ backup/out/
 .idea/
 .DS_Store
 Thumbs.db
+
+# 폐쇄망 반입 번들 (수 GB, git 제외)
+airgap/

@@ -1,0 +1,36 @@
+# 사내 인증서 체계 (cert-manager)
+#   1) selfsigned-bootstrap : 루트 CA 인증서를 처음 한 번 서명하기 위한 발급자
+#   2) hanbit-root-ca       : 가상 회사 "한빛정밀"의 사설 루트 CA (10년)
+#   3) hanbit-ca            : 이 CA로 서버 인증서를 서명하는 ClusterIssuer
+# 폐쇄망 고객사는 보통 사내 CA(AD CS 등)가 이미 있다 → 3)을 그 CA로 바꾸면 된다.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-bootstrap
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: hanbit-root-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: Hanbit Precision Internal Root CA (virtual)
+  secretName: hanbit-root-ca
+  duration: 87600h        # 10년
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-bootstrap
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: hanbit-ca
+spec:
+  ca:
+    secretName: hanbit-root-ca   # ClusterIssuer는 cert-manager 네임스페이스의 Secret을 읽는다

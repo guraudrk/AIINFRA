@@ -12,4 +12,9 @@ PF=$!
 trap 'kill $PF 2>/dev/null' EXIT
 sleep 3
 
-BASE_URL="http://localhost:$PORT" python3 -m unittest -v tests/test_permissions.py
+# 결과를 항상 파일로도 남긴다 (간헐적 실패의 원인을 나중에 볼 수 있도록)
+LOG="/tmp/ax-test-$(date +%Y%m%d-%H%M%S).log"
+BASE_URL="http://localhost:$PORT" python3 -m unittest -v tests/test_permissions.py 2>&1 | tee "$LOG"
+status=${PIPESTATUS[0]}
+echo "테스트 로그: $LOG"
+exit "$status"

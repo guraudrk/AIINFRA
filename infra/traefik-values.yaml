@@ -1,0 +1,46 @@
+# Traefik (Ingress 컨트롤러) — ingress-nginx 은퇴(2026-03 저장소 archived)로 대체
+# kind 구성: control-plane 노드의 80/443이 Windows localhost:80/443에 매핑돼 있으므로
+#           Traefik을 그 노드에 띄우고 hostPort로 직접 받는다.
+deployment:
+  replicas: 1
+
+nodeSelector:
+  ingress-ready: "true"
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+
+ports:
+  web:
+    hostPort: 80
+    http:
+      redirections:
+        entryPoint:            # HTTP로 오면 HTTPS로 영구 리다이렉트
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    hostPort: 443
+
+service:
+  type: ClusterIP              # 외부 노출은 hostPort가 담당 (클라우드 LoadBalancer 없음)
+
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+  name: traefik
+
+providers:
+  kubernetesIngress:
+    enabled: true
+  kubernetesCRD:
+    enabled: true
+
+# 지표는 기본 활성화(:9100/metrics) → M6에서 Prometheus가 수집
+accessLog:                     # 접근 로그: 누가 어떤 경로로 들어왔는지 (보안·장애 분석)
+  enabled: true                # (차트 v41: 예전 logs.access → accessLog 로 이름이 바뀜)
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits:   { cpu: 500m, memory: 256Mi }

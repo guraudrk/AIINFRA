@@ -1,0 +1,194 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- /*
+  네트워크 정책: 기본 거부 → 꼭 필요한 통신만 허용 (Calico가 실제로 강제)
+  통신 지도
+    [traefik ns] → web-ui:8080, ax-gateway:8000
+    web-ui       → ax-gateway:8000
+    ax-gateway   → llm-serving:11434, embedding-serving:11434, postgres:5432
+    ingest       → minio:9000, embedding-serving:11434, postgres:5432
+    db-migrate   → postgres:5432
+    model-preload→ llm-serving:11434, embedding-serving:11434
+    [monitoring ns] → 지표 포트 (M6에서 사용)
+  모든 Pod: DNS(kube-dns:53)만 허용, 외부 인터넷 egress 전면 차단
+*/ -}}
+# 1) 기본 거부: 이 네임스페이스의 모든 Pod는 들어오는 것도 나가는 것도 막는다
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# 2) DNS만 허용: 서비스 이름(postgres 등)을 IP로 바꾸려면 CoreDNS에 물어봐야 한다
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# 3) web-ui: 입구(traefik)에서만 받고, 게이트웨이로만 나간다
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-ui
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: web-ui }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        {{- include "np.fromNs" .Values.networkPolicy.ingressNamespace | nindent 8 }}
+      ports: [{ protocol: TCP, port: 8080 }]
+  egress:
+    - to:
+        {{- include "np.from" "ax-gateway" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 8000 }]
+---
+# 4) ax-gateway: 입구·web-ui에서 받고, LLM·임베딩·DB로만 나간다 (MinIO는 쓰지 않으므로 허용하지 않음)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ax-gateway
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: ax-gateway }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        {{- include "np.fromNs" .Values.networkPolicy.ingressNamespace | nindent 8 }}
+        {{- include "np.from" "web-ui" | nindent 8 }}
+        {{- include "np.fromNs" .Values.networkPolicy.monitoringNamespace | nindent 8 }}
+      ports: [{ protocol: TCP, port: 8000 }]
+  egress:
+    - to:
+        {{- include "np.from" "llm-serving" | nindent 8 }}
+        {{- include "np.from" "embedding-serving" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 11434 }]
+    - to:
+        {{- include "np.from" "postgres" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 5432 }]
+---
+# 5) llm-serving: 게이트웨이·모델 적재 Job에서만 받는다. 나가는 통신 없음 (모델 다운로드도 차단 → 폐쇄망 방식으로 반입)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llm-serving
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: llm-serving }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- include "np.from" "ax-gateway" | nindent 8 }}
+        {{- include "np.from" "model-preload" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 11434 }]
+---
+# 6) embedding-serving: 게이트웨이·수집·모델 적재 Job에서만 받는다
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: embedding-serving
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: embedding-serving }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- include "np.from" "ax-gateway" | nindent 8 }}
+        {{- include "np.from" "ingest" | nindent 8 }}
+        {{- include "np.from" "model-preload" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 11434 }]
+---
+# 7) postgres: 게이트웨이·수집·마이그레이션(+ M7 백업)에서만 받는다
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: postgres }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- include "np.from" "ax-gateway" | nindent 8 }}
+        {{- include "np.from" "ingest" | nindent 8 }}
+        {{- include "np.from" "db-migrate" | nindent 8 }}
+        {{- include "np.from" "pg-backup" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 5432 }]
+---
+# 8) minio: 수집(+ M7 백업)에서만 S3 API를 받는다
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: minio
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: minio }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- include "np.from" "ingest" | nindent 8 }}
+        {{- include "np.from" "pg-backup" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 9000 }]
+---
+# 9) 배치 작업들의 나가는 통신
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingest-egress
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: ingest }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        {{- include "np.from" "minio" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 9000 }]
+    - to:
+        {{- include "np.from" "embedding-serving" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 11434 }]
+    - to:
+        {{- include "np.from" "postgres" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 5432 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-migrate-egress
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: db-migrate }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        {{- include "np.from" "postgres" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 5432 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: model-preload-egress
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: model-preload }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        {{- include "np.from" "llm-serving" | nindent 8 }}
+        {{- include "np.from" "embedding-serving" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 11434 }]
+{{- end }}

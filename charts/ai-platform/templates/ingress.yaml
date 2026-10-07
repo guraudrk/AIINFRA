@@ -1,0 +1,59 @@
+{{- if .Values.ingress.enabled }}
+# 서버 인증서: cert-manager가 사내 CA(hanbit-ca)로 발급하고 만료 전에 자동 갱신한다
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ax-tls
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+spec:
+  secretName: ax-tls
+  duration: 2160h          # 90일
+  renewBefore: 360h        # 만료 15일 전 자동 갱신
+  dnsNames:
+    {{- toYaml .Values.ingress.hosts | nindent 4 }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: {{ .Values.ingress.clusterIssuer }}
+    kind: ClusterIssuer
+---
+# 단일 입구: https://<host>/ → 채팅 화면, /api → 게이트웨이
+# (/metrics, /healthz 등 운영용 경로는 외부에 노출하지 않는다)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ai-platform
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts:
+        {{- toYaml .Values.ingress.hosts | nindent 8 }}
+      secretName: ax-tls
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: ax-gateway
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-ui
+                port:
+                  number: 80
+    {{- end }}
+{{- end }}

@@ -121,3 +121,18 @@ axGateway:
 webUi:
   enabled: true
   image: ax/web-ui:0.1.0
+
+# ── 단일 입구 (M5) ──────────────────────────────────────────
+ingress:
+  enabled: true
+  className: traefik
+  clusterIssuer: hanbit-ca      # infra/tls/issuers.yaml
+  hosts:
+    - localhost
+    - ax.hanbit.local           # 사내 DNS 이름 가정 (Windows hosts 파일에 등록하면 사용 가능)
+
+# ── 네트워크 정책 (M5) ──────────────────────────────────────
+networkPolicy:
+  enabled: true
+  ingressNamespace: traefik       # 외부 입구(Ingress 컨트롤러)가 있는 네임스페이스
+  monitoringNamespace: monitoring # M6 Prometheus가 지표를 수집할 네임스페이스

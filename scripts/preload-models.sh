@@ -24,6 +24,9 @@ spec:
   backoffLimit: 3
   ttlSecondsAfterFinished: 3600
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: model-preload   # NetworkPolicy 대상 식별용
     spec:
       restartPolicy: OnFailure
       containers:
