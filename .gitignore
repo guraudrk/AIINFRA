@@ -27,3 +27,7 @@ Thumbs.db
 
 # 폐쇄망 반입 번들 (수 GB, git 제외)
 airgap/
+
+# 개인 작업 메모 (공개 레포에 올리지 않음, 로컬에만 유지)
+CLAUDE.md
+docs/progress.md
