@@ -54,7 +54,8 @@ kube-prometheus-stack으로 Prometheus·Grafana·Alertmanager를 올렸다. DCGM
 - **겪은 문제**
   1. Grafana를 `/grafana` 하위 경로로 옮기자 Grafana 자체 지표 주소도 `/grafana/metrics`로 바뀌어 `TargetDown`이 떴다. ServiceMonitor 경로를 고쳤다.
   2. `prom-query.sh` 안 Python의 따옴표 이스케이프 오류, 장애 주입 명령이 port-forward보다 먼저 실행된 순서 실수 → 스크립트로 만들어 재사용했다(`prom-query.sh`, `gpu-fault.sh`).
-  3. 재부팅 직후 수집 CronJob이 DNS 실패로 한 번 실패했지만 Job 재시도(backoffLimit)로 성공했다. 기동 순서 문제는 재시도로 흡수할 수 있다.
+  3. **Grafana 대시보드 목록이 몇 분째 로딩만 됨**: Pod가 2/3 NotReady, 로그에 `Handler timeout`, 검색 API 503이었다. `kubectl top`으로 보니 Grafana CPU가 **limit 500m에 딱 붙어** 있었다(CPU throttling). limit을 1500m으로 올리자 새 Pod가 636m을 쓰며 API가 0.02초에 200을 돌려줬다. 교훈: **메모리 limit 초과는 OOMKilled로 죽어서 눈에 띄지만, CPU limit 초과는 죽지 않고 조용히 느려진다.** limit은 실측 사용량을 보고 정한다.
+  4. 재부팅 직후 수집 CronJob이 DNS 실패로 한 번 실패했지만 Job 재시도(backoffLimit)로 성공했다. 기동 순서 문제는 재시도로 흡수할 수 있다.
 - **이 환경의 한계**: kind의 local-path 볼륨은 kubelet이 사용량을 보고하지 않아 PVC 지표가 비어 있다. NTP가 없어 `NodeClockNotSynchronising`가 뜬다. CPU가 추론으로 포화되면 `PrometheusMissingRuleEvaluations`가 뜬다.
 
 ## 실제 기업 환경에서는

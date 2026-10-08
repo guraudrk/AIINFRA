@@ -61,9 +61,11 @@ grafana:
       enabled: true
       label: grafana_dashboard      # 이 라벨이 붙은 ConfigMap을 대시보드로 자동 등록
       searchNamespace: ALL
+  # CPU limit 500m에서 throttling으로 대시보드 API가 Handler timeout(503)을 냈다 → 상향.
+  # (메모리 limit 초과는 OOMKilled로 죽지만, CPU limit 초과는 죽지 않고 조용히 느려진다)
   resources:
-    requests: { cpu: 50m, memory: 128Mi }
-    limits:   { cpu: 500m, memory: 384Mi }
+    requests: { cpu: 100m, memory: 192Mi }
+    limits:   { cpu: 1500m, memory: 512Mi }
 
 prometheusOperator:
   resources:
