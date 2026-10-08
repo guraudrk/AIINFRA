@@ -16,7 +16,7 @@
 | M5 | 네트워크·보안·폐쇄망 | ✅ 완료 — Traefik+TLS(사내 CA), NetworkPolicy 14/14, 폐쇄망 재구축 15분 21초 ([절차서](docs/airgap-install.md)) |
 | M6 | 모니터링·알람 | ✅ 완료 — Prometheus·Grafana(/grafana), DCGM 호환 GPU 지표, TTFT·대기열, 대시보드 2개, 알람 11종(실발생 확인) |
 | M7 | 백업·복구 훈련 | ✅ 완료 — pg_dump → MinIO 일 1회(7개 보관, 실패 알람), 복구 훈련 **RTO 48초 / RPO 36초** ([보고서](docs/restore-drill-report.md)) |
-| M8 | 장애 대응 런북 | ⬜ |
+| M8 | 장애 대응 런북 | ✅ 완료 — 장애 8종(Helm 값 주입), 4종 직접 진단, [런북 8개](runbooks/), [보안 사고 보고서](docs/incident-report-sample.md) |
 | M9 | 사이징·기술 제안 | ⬜ |
 | M10 | 마무리 | ⬜ |
 
@@ -43,6 +43,10 @@ make ingest   # 가상 데이터 → MinIO → 청크·임베딩 → pgvector
 make test     # 같은 질문을 4개 역할로 보내 권한 범위·RLS·감사 로그 자동 검증
 ./scripts/netpol-test.sh   # NetworkPolicy 허용·차단 표
 # 채팅 화면: https://localhost/  (사내 CA: infra/tls/hanbit-root-ca.crt)
+
+# 장애 훈련
+make chaos SCENARIO=1        # 장애 주입 (1~8), 고객 문의 형태로 증상 출력
+make chaos-revert SCENARIO=1 # 원복 (helm --reset-values + 값 검증)
 
 # 백업·복구
 make backup                                # DB 덤프 → MinIO, k8s 설정 내보내기

@@ -1,5 +1,5 @@
 # AX Platform Lab — 진입점. 각 타깃은 해당 모듈에서 채운다.
-.PHONY: help up down images secrets deploy ingest test backup restore chaos status
+.PHONY: help up down images secrets deploy ingest test backup restore chaos chaos-revert status
 
 help:
 	@echo "make up | down | images | secrets | deploy | ingest | test | backup | restore | chaos SCENARIO=N | status"
@@ -34,7 +34,10 @@ restore:   ## M7: 최신 백업 복구
 	./scripts/restore.sh
 
 chaos:     ## M8: 장애 주입 (make chaos SCENARIO=1)
-	@echo "TODO(M8): scripts/chaos/$(SCENARIO)"
+	./scripts/chaos/0$(SCENARIO)-*.sh inject
+
+chaos-revert: ## M8: 장애 원복 (make chaos-revert SCENARIO=1)
+	./scripts/chaos/0$(SCENARIO)-*.sh revert
 
 status:    ## 클러스터 상태 요약
 	kubectl get nodes -L node-role

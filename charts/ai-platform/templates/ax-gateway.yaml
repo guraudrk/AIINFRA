@@ -31,10 +31,10 @@ spec:
               value: http://llm-serving:11434
             - name: LLM_MODEL
               value: {{ .Values.llmServing.model | quote }}
-            - name: EMBED_URL
-              value: http://embedding-serving:11434
+            - name: EMBED_URL      # (M8 시나리오 5에서 다른 모델로 바꿔 차원 불일치를 재현)
+              value: {{ $c.embedUrlOverride | default "http://embedding-serving:11434" | quote }}
             - name: EMBED_MODEL
-              value: {{ .Values.embeddingServing.model | quote }}
+              value: {{ $c.embedModelOverride | default .Values.embeddingServing.model | quote }}
             - name: PGHOST
               value: postgres
             - name: PGDATABASE

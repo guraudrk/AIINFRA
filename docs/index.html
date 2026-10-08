@@ -150,6 +150,7 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: var(--
       <a class="btn primary" href="https://github.com/guraudrk/AIINFRA" target="_blank" rel="noopener">GitHub 저장소</a>
       <a class="btn" href="https://github.com/guraudrk/AIINFRA/tree/main/docs/study" target="_blank" rel="noopener">모듈별 학습 노트</a>
       <a class="btn" href="https://github.com/guraudrk/AIINFRA/blob/main/docs/airgap-install.md" target="_blank" rel="noopener">폐쇄망 설치 절차서</a>
+      <a class="btn" href="https://github.com/guraudrk/AIINFRA/blob/main/docs/incident-report-sample.md" target="_blank" rel="noopener">보안 사고 보고서</a>
       <a class="btn" href="https://github.com/guraudrk/AIINFRA/blob/main/docs/restore-drill-report.md" target="_blank" rel="noopener">복구 훈련 보고서</a>
     </div>
   </header>
@@ -161,15 +162,15 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: var(--
       <div class="gauge"><span class="v">14/14</span><span class="k">NetworkPolicy 허용·차단 검증 (적용 전 9개 실패)</span></div>
       <div class="gauge hl"><span class="v">15:21</span><span class="k">인터넷 차단 상태 전체 재구축 (번들 7.5GB)</span></div>
       <div class="gauge"><span class="v">48s / 36s</span><span class="k">복구 훈련 RTO / RPO</span></div>
-      <div class="gauge"><span class="v">11</span><span class="k">알람 규칙 (심각도·대응 문서 연결)</span></div>
+      <div class="gauge"><span class="v">4/4</span><span class="k">장애 직접 진단 (고객 문의 → 근본 원인)</span></div>
       <div class="gauge"><span class="v">34.8</span><span class="k">CPU 추론 처리량 토큰/s (동시 4)</span></div>
     </div>
   </section>
 
   <section class="section" aria-labelledby="p">
     <h2 id="p">진행 현황 <span class="tag">M0 – M10</span></h2>
-    <div class="progress-bar" role="img" aria-label="11개 모듈 중 8개 완료, 1개 다음 진행"><i style="width: 72.7%"></i><i class="next" style="width: 9.1%"></i></div>
-    <div class="progress-meta"><span>완료 8 · 다음 1 · 남음 2</span><span>약 75%</span></div>
+    <div class="progress-bar" role="img" aria-label="11개 모듈 중 9개 완료, 1개 다음 진행"><i style="width: 81.8%"></i><i class="next" style="width: 9.1%"></i></div>
+    <div class="progress-meta"><span>완료 9 · 다음 1 · 남음 1</span><span>약 85%</span></div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>모듈</th><th>상태</th><th>무엇을 했나</th><th>핵심 결과</th><th>노트</th></tr></thead>
@@ -182,8 +183,8 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: var(--
           <tr class="done"><td class="mod">M5</td><td><span class="chip ok">완료</span></td><td>HTTPS 단일 입구, NetworkPolicy, 폐쇄망 리허설</td><td>기본 거부 14/14, 오프라인 재구축 15분 21초</td><td><a href="https://github.com/guraudrk/AIINFRA/blob/main/docs/study/05-network-security.md" target="_blank" rel="noopener">05</a></td></tr>
           <tr class="done"><td class="mod">M6</td><td><span class="chip ok">완료</span></td><td>Prometheus·Grafana, GPU 지표, 알람</td><td>대기열 → TTFT 악화, 과열 → critical 알람 실발생 확인</td><td><a href="https://github.com/guraudrk/AIINFRA/blob/main/docs/study/06-observability.md" target="_blank" rel="noopener">06</a></td></tr>
           <tr class="done"><td class="mod">M7</td><td><span class="chip ok">완료</span></td><td>pg_dump → MinIO 백업, 복구 훈련</td><td>테이블 삭제 → 503 → 복구, RTO 48초 / RPO 36초</td><td><a href="https://github.com/guraudrk/AIINFRA/blob/main/docs/study/07-backup.md" target="_blank" rel="noopener">07</a></td></tr>
-          <tr class="next"><td class="mod">M8 ★</td><td><span class="chip wait">다음</span></td><td>장애 시나리오 8개, 직접 원인 진단, 런북</td><td>–</td><td>–</td></tr>
-          <tr><td class="mod">M9</td><td><span class="chip todo">예정</span></td><td>GPU·벡터DB 사이징 계산기, 가상 RFP 제안서</td><td>–</td><td>–</td></tr>
+          <tr class="done"><td class="mod">M8 ★</td><td><span class="chip ok">완료</span></td><td>장애 8종 주입, 4종은 고객 문의만 받고 직접 진단</td><td>OOMKilled·잘못된 모델·GPU Pending·권한 유출 조사(RLS가 차단, 유출 0건) + 런북 8개</td><td><a href="https://github.com/guraudrk/AIINFRA/blob/main/docs/study/08-troubleshooting.md" target="_blank" rel="noopener">08</a></td></tr>
+          <tr class="next"><td class="mod">M9</td><td><span class="chip wait">다음</span></td><td>GPU·벡터DB 사이징 계산기, 가상 RFP 제안서</td><td>–</td><td>–</td></tr>
           <tr><td class="mod">M10</td><td><span class="chip todo">예정</span></td><td>최종 정리, 모의 면접</td><td>–</td><td>–</td></tr>
         </tbody>
       </table>
@@ -254,6 +255,8 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: var(--
       <li><span class="m">M5</span><b>ingress-nginx 은퇴</b><span>2026-03 저장소 보관 확인 → Traefik으로 대체, Gateway API 이전 경로 정리</span></li>
       <li><span class="m">M5</span><b>폐쇄망 반입 함정 3가지</b><span>자격 증명 도우미 시간 초과, 멀티 아키텍처 저장 실패, docker save의 digest 변경 → 현장은 내부 레지스트리가 정석</span></li>
       <li><span class="m">M5</span><b>실행 순서에 의존하던 테스트</b><span>새 DB에서 감사 로그 테스트 실패 → 간헐적 실패의 실제 원인, 테스트 독립화</span></li>
+      <li><span class="m">M8</span><b>권한 필터가 꺼진 배포에서도 유출 0건</b><span>감사 로그(사용 문서 0건) + 앱 계정 직접 조회(작업자 0 / 품질 25)로 RLS 차단을 증명하고 고객 보고서 작성</span></li>
+      <li><span class="m">M8</span><b>원복했는데 장애 설정이 그대로</b><span>helm upgrade가 직전 --set 값을 다시 적용 → --reset-values 명시와 원복 후 값 검증 추가</span></li>
       <li><span class="m">M6</span><b>Grafana가 죽지 않고 느려짐</b><span>CPU limit 500m에서 throttling → Handler timeout(503). 메모리 초과는 OOMKilled, CPU 초과는 조용한 지연</span></li>
     </ul>
   </section>
@@ -277,7 +280,7 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: var(--
 
   <footer>
     <span>AX Platform Lab · 가상 제조사 "한빛정밀" 데이터만 사용</span>
-    <span class="mono">updated 2026-10-08 · M7 완료</span>
+    <span class="mono">updated 2026-10-08 · M8 완료</span>
   </footer>
 </div>
 
