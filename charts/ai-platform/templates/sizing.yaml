@@ -1,0 +1,91 @@
+{{- if .Values.sizing.enabled }}
+# 사이징 계산기 (M9): https://<host>/sizing
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sizing
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: sizing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sizing
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sizing
+    spec:
+      nodeSelector:
+        node-role: app
+      containers:
+        - name: sizing
+          image: {{ .Values.sizing.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet: { path: /sizing/healthz, port: http }
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sizing
+  labels:
+    app.kubernetes.io/name: sizing
+spec:
+  selector:
+    app.kubernetes.io/name: sizing
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sizing
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts:
+        {{- toYaml .Values.ingress.hosts | nindent 8 }}
+      secretName: ax-tls
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /sizing
+            pathType: Prefix
+            backend:
+              service:
+                name: sizing
+                port:
+                  number: 8000
+    {{- end }}
+{{- if .Values.networkPolicy.enabled }}
+---
+# 계산기는 입구에서만 받고, 밖으로 나갈 일이 없다 (DNS 외 egress는 기본 거부 정책으로 차단)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sizing
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: sizing }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- include "np.fromNs" .Values.networkPolicy.ingressNamespace | nindent 8 }}
+      ports: [{ protocol: TCP, port: 8000 }]
+{{- end }}
+{{- end }}

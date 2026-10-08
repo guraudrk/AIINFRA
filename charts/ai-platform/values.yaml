@@ -152,3 +152,8 @@ backup:
   schedule: "0 2 * * *"      # 매일 02:00 (UTC 기준 kind 노드 시간)
   bucket: backups
   keep: 7                    # 최근 7개 보관 (일 1회면 7일치)
+
+# ── 사이징 계산기 (M9) ──────────────────────────────────────
+sizing:
+  enabled: true
+  image: ax/sizing:0.1.0

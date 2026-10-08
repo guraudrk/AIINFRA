@@ -17,7 +17,7 @@
 | M6 | 모니터링·알람 | ✅ 완료 — Prometheus·Grafana(/grafana), DCGM 호환 GPU 지표, TTFT·대기열, 대시보드 2개, 알람 11종(실발생 확인) |
 | M7 | 백업·복구 훈련 | ✅ 완료 — pg_dump → MinIO 일 1회(7개 보관, 실패 알람), 복구 훈련 **RTO 48초 / RPO 36초** ([보고서](docs/restore-drill-report.md)) |
 | M8 | 장애 대응 런북 | ✅ 완료 — 장애 8종(Helm 값 주입), 4종 직접 진단, [런북 8개](runbooks/), [보안 사고 보고서](docs/incident-report-sample.md) |
-| M9 | 사이징·기술 제안 | ⬜ |
+| M9 | 사이징·기술 제안 | ✅ 완료 — 사이징 계산기(/sizing, pytest 12개), [가상 RFP 제안서](docs/proposal-sample.md): 32B FP8·동시 30건 = 70.6GB → L40S 2장 |
 | M10 | 마무리 | ⬜ |
 
 ## 저장소 구조
