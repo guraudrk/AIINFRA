@@ -27,10 +27,11 @@ test:      ## M4: 역할별 권한 자동 테스트
 	./scripts/run-tests.sh
 
 backup:    ## M7: 즉시 백업
-	@echo "TODO(M7): pg-backup"
+	./scripts/backup-now.sh
+	./scripts/k8s-export.sh
 
 restore:   ## M7: 최신 백업 복구
-	@echo "TODO(M7): restore"
+	./scripts/restore.sh
 
 chaos:     ## M8: 장애 주입 (make chaos SCENARIO=1)
 	@echo "TODO(M8): scripts/chaos/$(SCENARIO)"

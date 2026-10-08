@@ -15,7 +15,7 @@
 | M4 | 권한 기반 RAG + 에이전트 | ✅ 완료 — 역할 4개 × 도구 4개, 앱 필터 + PostgreSQL RLS 2중 통제, 감사 로그, 자동 테스트 14/14 통과 |
 | M5 | 네트워크·보안·폐쇄망 | ✅ 완료 — Traefik+TLS(사내 CA), NetworkPolicy 14/14, 폐쇄망 재구축 15분 21초 ([절차서](docs/airgap-install.md)) |
 | M6 | 모니터링·알람 | ✅ 완료 — Prometheus·Grafana(/grafana), DCGM 호환 GPU 지표, TTFT·대기열, 대시보드 2개, 알람 11종(실발생 확인) |
-| M7 | 백업·복구 훈련 | ⬜ |
+| M7 | 백업·복구 훈련 | ✅ 완료 — pg_dump → MinIO 일 1회(7개 보관, 실패 알람), 복구 훈련 **RTO 48초 / RPO 36초** ([보고서](docs/restore-drill-report.md)) |
 | M8 | 장애 대응 런북 | ⬜ |
 | M9 | 사이징·기술 제안 | ⬜ |
 | M10 | 마무리 | ⬜ |
@@ -43,6 +43,10 @@ make ingest   # 가상 데이터 → MinIO → 청크·임베딩 → pgvector
 make test     # 같은 질문을 4개 역할로 보내 권한 범위·RLS·감사 로그 자동 검증
 ./scripts/netpol-test.sh   # NetworkPolicy 허용·차단 표
 # 채팅 화면: https://localhost/  (사내 CA: infra/tls/hanbit-root-ca.crt)
+
+# 백업·복구
+make backup                                # DB 덤프 → MinIO, k8s 설정 내보내기
+CONFIRM=yes ./scripts/restore-drill.sh     # 복구 훈련 (테이블 삭제 → 복구 → RTO/RPO 보고서)
 
 # 폐쇄망 리허설
 ./scripts/airgap-bundle.sh                 # 반입 번들 생성 (인터넷 되는 쪽)

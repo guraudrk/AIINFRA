@@ -1,0 +1,113 @@
+{{- if .Values.backup.enabled }}
+{{- $c := .Values.backup }}
+# DB 백업: pg_dump(압축 커스텀 포맷) → MinIO backups/postgres/ , 최근 {{ $c.keep }}개 보관
+# 성공 감시: kube-state-metrics의 kube_cronjob_status_last_successful_time → 알람 BackupNotSucceeded24h (M6)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-scripts
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+data:
+  # 업로드 + 보관 개수 관리 (수집 이미지의 boto3 사용)
+  upload.py: |
+    import json, os, pathlib, boto3
+    s3 = boto3.client("s3", endpoint_url=os.environ["S3_ENDPOINT"], region_name="us-east-1",
+                      aws_access_key_id=os.environ["S3_ACCESS_KEY"], aws_secret_access_key=os.environ["S3_SECRET_KEY"])
+    bucket, prefix, keep = os.environ["BACKUP_BUCKET"], "postgres/", int(os.environ["BACKUP_KEEP"])
+    dump = next(pathlib.Path("/backup").glob("*.dump"))
+    s3.upload_file(str(dump), bucket, prefix + dump.name)
+    objs = sorted(s3.list_objects_v2(Bucket=bucket, Prefix=prefix).get("Contents", []), key=lambda o: o["Key"])
+    for o in objs[:-keep]:                      # 이름에 UTC 시각이 들어 있어 정렬 = 시간순
+        s3.delete_object(Bucket=bucket, Key=o["Key"])
+    print(json.dumps({"event": "backup_uploaded", "key": prefix + dump.name, "bytes": dump.stat().st_size,
+                      "kept": min(len(objs), keep), "deleted": max(0, len(objs) - keep)}))
+  # 복구용: 가장 최근 백업 내려받기
+  download.py: |
+    import json, os, boto3
+    s3 = boto3.client("s3", endpoint_url=os.environ["S3_ENDPOINT"], region_name="us-east-1",
+                      aws_access_key_id=os.environ["S3_ACCESS_KEY"], aws_secret_access_key=os.environ["S3_SECRET_KEY"])
+    bucket = os.environ["BACKUP_BUCKET"]
+    objs = sorted(s3.list_objects_v2(Bucket=bucket, Prefix="postgres/").get("Contents", []), key=lambda o: o["Key"])
+    key = os.environ.get("BACKUP_KEY") or objs[-1]["Key"]
+    s3.download_file(bucket, key, "/backup/restore.dump")
+    print(json.dumps({"event": "backup_downloaded", "key": key, "available": len(objs)}))
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pg-backup
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: pg-backup
+spec:
+  schedule: {{ $c.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: pg-backup        # NetworkPolicy: postgres·minio 접근 허용 대상
+        spec:
+          restartPolicy: Never
+          volumes:
+            - name: backup
+              emptyDir: {}
+            - name: scripts
+              configMap: { name: backup-scripts }
+          initContainers:
+            # 1) 덤프: 슈퍼유저로 실행 (RLS가 걸린 테이블도 전체 행을 덤프해야 하므로)
+            - name: dump
+              image: {{ .Values.postgres.image }}
+              command: ["sh", "-c"]
+              args:
+                - pg_dump -h postgres -U postgres -d {{ .Values.postgres.database }} -Fc
+                  -f /backup/hanbit-$(date -u +%Y%m%dT%H%M%SZ).dump && ls -l /backup
+              env:
+                - name: PGPASSWORD
+                  valueFrom: { secretKeyRef: { name: postgres-credentials, key: postgres-password } }
+              volumeMounts: [{ name: backup, mountPath: /backup }]
+          containers:
+            # 2) 업로드 + 오래된 백업 정리
+            - name: upload
+              image: {{ .Values.ingest.image }}
+              imagePullPolicy: IfNotPresent
+              command: ["python", "/scripts/upload.py"]
+              env:
+                - { name: S3_ENDPOINT, value: "http://minio:9000" }
+                - { name: BACKUP_BUCKET, value: {{ $c.bucket | quote }} }
+                - { name: BACKUP_KEEP, value: {{ $c.keep | quote }} }
+                - name: S3_ACCESS_KEY
+                  valueFrom: { secretKeyRef: { name: minio-credentials, key: root-user } }
+                - name: S3_SECRET_KEY
+                  valueFrom: { secretKeyRef: { name: minio-credentials, key: root-password } }
+              volumeMounts:
+                - { name: backup, mountPath: /backup }
+                - { name: scripts, mountPath: /scripts }
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits:   { cpu: 500m, memory: 256Mi }
+{{- if .Values.networkPolicy.enabled }}
+---
+# 백업·복구 Job은 DB와 MinIO로만 나간다
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pg-backup-egress
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: pg-backup }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        {{- include "np.from" "postgres" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 5432 }]
+    - to:
+        {{- include "np.from" "minio" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 9000 }]
+{{- end }}
+{{- end }}

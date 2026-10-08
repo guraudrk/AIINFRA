@@ -145,3 +145,10 @@ monitoring:
     image: ax/gpu-sim-exporter:0.1.0       # SIMULATED 모드. REAL이면 NVIDIA dcgm-exporter(GPU Operator)로 대체
   postgresExporter:
     image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+
+# ── 백업 (M7) ───────────────────────────────────────────────
+backup:
+  enabled: true
+  schedule: "0 2 * * *"      # 매일 02:00 (UTC 기준 kind 노드 시간)
+  bucket: backups
+  keep: 7                    # 최근 7개 보관 (일 1회면 7일치)
