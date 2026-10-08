@@ -1,14 +1,17 @@
 # AX Platform Lab — 진입점. 각 타깃은 해당 모듈에서 채운다.
-.PHONY: help up down images secrets deploy ingest test backup restore chaos chaos-revert status
+.PHONY: help up down addons images secrets deploy ingest test backup restore chaos chaos-revert status
 
 help:
-	@echo "make up | down | images | secrets | deploy | ingest | test | backup | restore | chaos SCENARIO=N | status"
+	@echo "make up | down | addons | images | secrets | deploy | ingest | test | backup | restore | chaos SCENARIO=N | status"
 
 up:        ## M1: kind 클러스터 생성
 	./scripts/cluster-up.sh
 
 down:      ## M1: kind 클러스터 삭제
 	./scripts/cluster-down.sh
+
+addons:    ## 입구(Traefik)·인증서(cert-manager)·모니터링 설치
+	./scripts/addons.sh
 
 images:    ## 앱 이미지 빌드 + kind 적재
 	./scripts/build-images.sh

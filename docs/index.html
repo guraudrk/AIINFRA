@@ -148,7 +148,9 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: var(--
     <p class="lede">가상 제조사 <b>한빛정밀</b>의 sLLM + RAG + AI 에이전트를 PC 한 대 위 kind 4노드 클러스터에 올리고, 네트워크 보안·폐쇄망 설치·모니터링·백업 복구까지 운영 업무를 재현했습니다. 모든 수치는 실제로 측정한 값이고, 데이터는 전부 가상입니다.</p>
     <div class="links">
       <a class="btn primary" href="https://github.com/guraudrk/AIINFRA" target="_blank" rel="noopener">GitHub 저장소</a>
+      <a class="btn" href="https://github.com/guraudrk/AIINFRA/tree/main/docs/textbook" target="_blank" rel="noopener">개념서 10장</a>
       <a class="btn" href="https://github.com/guraudrk/AIINFRA/tree/main/docs/study" target="_blank" rel="noopener">모듈별 학습 노트</a>
+      <a class="btn" href="https://github.com/guraudrk/AIINFRA/blob/main/docs/interview-qa-all.md" target="_blank" rel="noopener">예상 질문 54개</a>
       <a class="btn" href="https://github.com/guraudrk/AIINFRA/blob/main/docs/airgap-install.md" target="_blank" rel="noopener">폐쇄망 설치 절차서</a>
       <a class="btn" href="https://github.com/guraudrk/AIINFRA/blob/main/docs/proposal-sample.md" target="_blank" rel="noopener">기술 제안서</a>
       <a class="btn" href="https://github.com/guraudrk/AIINFRA/blob/main/docs/incident-report-sample.md" target="_blank" rel="noopener">보안 사고 보고서</a>
@@ -171,8 +173,8 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: var(--
 
   <section class="section" aria-labelledby="p">
     <h2 id="p">진행 현황 <span class="tag">M0 – M10</span></h2>
-    <div class="progress-bar" role="img" aria-label="11개 모듈 중 10개 완료, 1개 다음 진행"><i style="width: 90.9%"></i><i class="next" style="width: 9.1%"></i></div>
-    <div class="progress-meta"><span>완료 10 · 다음 1</span><span>약 92%</span></div>
+    <div class="progress-bar" role="img" aria-label="11개 모듈 중 10개 완료, 마무리 진행 중"><i style="width: 90.9%"></i><i class="next" style="width: 5.5%"></i></div>
+    <div class="progress-meta"><span>완료 10 · 마무리 진행 중</span><span>약 96%</span></div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>모듈</th><th>상태</th><th>무엇을 했나</th><th>핵심 결과</th><th>노트</th></tr></thead>
@@ -187,7 +189,7 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: var(--
           <tr class="done"><td class="mod">M7</td><td><span class="chip ok">완료</span></td><td>pg_dump → MinIO 백업, 복구 훈련</td><td>테이블 삭제 → 503 → 복구, RTO 48초 / RPO 36초</td><td><a href="https://github.com/guraudrk/AIINFRA/blob/main/docs/study/07-backup.md" target="_blank" rel="noopener">07</a></td></tr>
           <tr class="done"><td class="mod">M8 ★</td><td><span class="chip ok">완료</span></td><td>장애 8종 주입, 4종은 고객 문의만 받고 직접 진단</td><td>OOMKilled·잘못된 모델·GPU Pending·권한 유출 조사(RLS가 차단, 유출 0건) + 런북 8개</td><td><a href="https://github.com/guraudrk/AIINFRA/blob/main/docs/study/08-troubleshooting.md" target="_blank" rel="noopener">08</a></td></tr>
           <tr class="done"><td class="mod">M9</td><td><span class="chip ok">완료</span></td><td>GPU·벡터DB 사이징 계산기(/sizing, pytest 12개), 가상 RFP 제안서</td><td>32B FP8 · 동시 30건 = 70.6GB → L40S 2장 1벌, 4장 서버 2대 이중화</td><td><a href="https://github.com/guraudrk/AIINFRA/blob/main/docs/study/09-sizing.md" target="_blank" rel="noopener">09</a></td></tr>
-          <tr class="next"><td class="mod">M10</td><td><span class="chip wait">다음</span></td><td>최종 정리, 모의 면접</td><td>–</td><td>–</td></tr>
+          <tr class="next"><td class="mod">M10</td><td><span class="chip wait">진행 중</span></td><td>README 최종, 포트폴리오 원고, 개념서 10장, 예상 질문 54개 · 모의 면접(다음 주)</td><td>자료 완료, 모의 면접 15문항 남음</td><td><a href="https://github.com/guraudrk/AIINFRA/blob/main/docs/interview-qa-all.md" target="_blank" rel="noopener">Q&amp;A</a></td></tr>
         </tbody>
       </table>
     </div>
@@ -283,7 +285,7 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: var(--
 
   <footer>
     <span>AX Platform Lab · 가상 제조사 "한빛정밀" 데이터만 사용</span>
-    <span class="mono">updated 2026-10-08 · M9 완료</span>
+    <span class="mono">updated 2026-10-08 · M10 자료 완료</span>
   </footer>
 </div>
 
