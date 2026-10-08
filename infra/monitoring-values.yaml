@@ -1,0 +1,71 @@
+# kube-prometheus-stack (namespace: monitoring)
+# Prometheus(수집·저장·알람 평가) + Alertmanager(알람 전달) + Grafana(대시보드)
+# + kube-state-metrics(쿠버네티스 객체 상태) + node-exporter(노드 CPU·메모리·디스크)
+
+# kind에서는 컨트롤 플레인 구성요소의 지표 포트가 노드 내부(127.0.0.1)에만 열려 있어 수집이 실패한다.
+# 실패 알람이 계속 울리지 않도록 끈다. (운영 클러스터에서는 켜야 한다)
+kubeEtcd: { enabled: false }
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeProxy: { enabled: false }
+
+prometheus:
+  prometheusSpec:
+    retention: 3d                 # 로컬 디스크 절약 (운영: 15~30일 + 장기 저장소)
+    scrapeInterval: 15s
+    # 차트 밖에서 만든 ServiceMonitor·PrometheusRule도 모두 읽는다 (우리 앱 지표·알람)
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits:   { cpu: "1",  memory: 1536Mi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 20m, memory: 64Mi }
+      limits:   { cpu: 200m, memory: 128Mi }
+
+grafana:
+  admin:
+    existingSecret: grafana-admin   # scripts/create-secrets.sh 가 생성 (비밀번호를 values에 쓰지 않음)
+    userKey: admin-user
+    passwordKey: admin-password
+  serviceMonitor:
+    path: /grafana/metrics          # 하위 경로로 옮기면 Grafana 자체 지표 주소도 바뀐다 (안 고치면 TargetDown)
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s/grafana"
+      serve_from_sub_path: true     # https://localhost/grafana 하위 경로로 서비스
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+      traefik.ingress.kubernetes.io/router.tls: "true"
+    hosts: [localhost, ax.hanbit.local]
+    path: /grafana
+    tls:
+      - secretName: grafana-tls
+        hosts: [localhost, ax.hanbit.local]
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard      # 이 라벨이 붙은 ConfigMap을 대시보드로 자동 등록
+      searchNamespace: ALL
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 384Mi }
+
+prometheusOperator:
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 300m, memory: 256Mi }

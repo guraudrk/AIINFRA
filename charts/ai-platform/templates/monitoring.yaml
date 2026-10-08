@@ -1,0 +1,162 @@
+{{- if .Values.monitoring.enabled }}
+# ── GPU 지표: SIMULATED 모드에서는 dcgm-exporter 대신 시뮬레이터 (지표 이름은 DCGM과 동일) ──
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-sim-exporter
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gpu-sim-exporter
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gpu-sim-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gpu-sim-exporter
+    spec:
+      {{- include "ai-platform.gpuPlacement" . | nindent 6 }}   # GPU 노드마다 하나 (dcgm-exporter와 같은 배치)
+      containers:
+        - name: exporter
+          image: {{ .Values.monitoring.gpuSimExporter.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: metrics
+              containerPort: 9400
+          env:
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits:   { cpu: 100m, memory: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpu-sim-exporter
+  labels:
+    app.kubernetes.io/name: gpu-sim-exporter
+spec:
+  selector:
+    app.kubernetes.io/name: gpu-sim-exporter
+  ports:
+    - name: metrics
+      port: 9400
+      targetPort: metrics
+---
+# ── PostgreSQL 지표: 연결 수, 트랜잭션, DB 크기 (모니터링 전용 계정 ax_monitor) ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/name: postgres-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres-exporter
+    spec:
+      nodeSelector:
+        node-role: app
+      containers:
+        - name: exporter
+          image: {{ .Values.monitoring.postgresExporter.image }}
+          ports:
+            - name: metrics
+              containerPort: 9187
+          env:
+            - name: DATA_SOURCE_URI
+              value: "postgres:5432/{{ .Values.postgres.database }}?sslmode=disable"
+            - name: DATA_SOURCE_USER
+              value: ax_monitor
+            - name: DATA_SOURCE_PASS
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: monitor-password } }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits:   { cpu: 200m, memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-exporter
+  labels:
+    app.kubernetes.io/name: postgres-exporter
+spec:
+  selector:
+    app.kubernetes.io/name: postgres-exporter
+  ports:
+    - name: metrics
+      port: 9187
+      targetPort: metrics
+---
+# ── 수집 대상 (ServiceMonitor): Prometheus Operator가 이 정의를 보고 scrape 설정을 만든다 ──
+{{- range $name, $svc := dict "ax-gateway" "http" "gpu-sim-exporter" "metrics" "postgres-exporter" "metrics" }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "ai-platform.labels" $ | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  endpoints:
+    - port: {{ $svc }}
+      path: /metrics
+      interval: 15s
+---
+{{- end }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: minio
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  endpoints:
+    - port: s3
+      path: /minio/v2/metrics/cluster
+      interval: 30s
+---
+# Traefik(입구) 지표: 응답 코드별 요청 수 → 5xx 비율 알람
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: traefik
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+spec:
+  namespaceSelector:
+    matchNames: [{{ .Values.networkPolicy.ingressNamespace }}]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: traefik
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+---
+# ── 대시보드: ConfigMap에 grafana_dashboard 라벨을 붙이면 Grafana sidecar가 자동 등록 ──
+{{- range $file, $_ := .Files.Glob "dashboards/*.json" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-{{ base $file | trimSuffix ".json" }}
+  labels:
+    grafana_dashboard: "1"
+data:
+  {{ base $file }}: |-
+    {{- $.Files.Get $file | nindent 4 }}
+---
+{{- end }}
+{{- end }}

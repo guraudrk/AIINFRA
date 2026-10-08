@@ -55,6 +55,12 @@ data:
     CREATE POLICY ingest_all ON chunks TO ax_ingest USING (true) WITH CHECK (true);
     DROP POLICY IF EXISTS ingest_all ON maintenance_history;
     CREATE POLICY ingest_all ON maintenance_history TO ax_ingest USING (true) WITH CHECK (true);
+
+  003-monitor.sql: |
+    -- ── M6: 모니터링 전용 계정 (pg_monitor: 통계 뷰만 읽음, 업무 데이터 접근 없음) ──
+    SELECT 'CREATE ROLE ax_monitor LOGIN' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'ax_monitor') \gexec
+    ALTER ROLE ax_monitor PASSWORD :'monitor_pw';     -- 비밀번호는 Secret → 환경변수 → psql 변수로만 전달
+    GRANT pg_monitor TO ax_monitor;
 ---
 apiVersion: batch/v1
 kind: Job
@@ -84,11 +90,14 @@ spec:
               until pg_isready -h postgres -U postgres; do sleep 3; done
               for f in /migrations/*.sql; do
                 echo "[migrate] $f"
-                psql -v ON_ERROR_STOP=1 -h postgres -U postgres -d {{ .Values.postgres.database }} -f "$f" || exit 1
+                psql -v ON_ERROR_STOP=1 -v monitor_pw="$MONITOR_PASSWORD" \
+                  -h postgres -U postgres -d {{ .Values.postgres.database }} -f "$f" || exit 1
               done
           env:
             - name: PGPASSWORD
               valueFrom: { secretKeyRef: { name: postgres-credentials, key: postgres-password } }
+            - name: MONITOR_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: monitor-password } }
           volumeMounts:
             - name: migrations
               mountPath: /migrations

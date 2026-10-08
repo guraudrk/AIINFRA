@@ -1,0 +1,15 @@
+# Grafana용 서버 인증서 (Ingress는 같은 네임스페이스의 Secret만 쓸 수 있어 monitoring에 따로 발급)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: grafana-tls
+  namespace: monitoring
+spec:
+  secretName: grafana-tls
+  duration: 2160h
+  renewBefore: 360h
+  dnsNames: [localhost, ax.hanbit.local]
+  privateKey: { algorithm: ECDSA, size: 256 }
+  issuerRef:
+    name: hanbit-ca
+    kind: ClusterIssuer

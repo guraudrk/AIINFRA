@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import Response
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel
 
@@ -63,6 +63,9 @@ TOOL_LABELS = {"query_maintenance": "정비 이력 조회", "check_stock": "부�
 REQUESTS = Counter("ax_requests_total", "채팅 요청 수", ["role", "result"])
 LATENCY = Histogram("ax_request_duration_seconds", "채팅 응답 시간", buckets=(1, 2, 5, 10, 20, 30, 60, 120, 300))
 LLM_LATENCY = Histogram("ax_llm_duration_seconds", "LLM 호출 시간", buckets=(1, 2, 5, 10, 20, 30, 60, 120, 300))
+LLM_TTFT = Histogram("ax_llm_ttft_seconds", "첫 토큰까지 시간(TTFT)", buckets=(0.5, 1, 2, 3, 5, 10, 20, 30, 60))
+LLM_TPS = Histogram("ax_llm_tokens_per_second", "생성 속도(토큰/초)", buckets=(2, 5, 10, 15, 20, 30, 50, 100))
+LLM_INFLIGHT = Gauge("ax_llm_inflight", "처리 중인 LLM 호출 수(대기열 근사)")
 TOOL_CALLS = Counter("ax_tool_calls_total", "도구 호출 수", ["tool"])
 DENIED = Counter("ax_permission_denied_total", "권한 거부 수", ["role", "tool"])
 SEARCHES = Counter("ax_search_total", "문서 검색 수", ["role"])
@@ -137,14 +140,32 @@ def embed(text):
 
 
 def llm_chat(messages, tools=None):
-    payload = {"model": LLM_MODEL, "messages": messages, "stream": False,
+    """도구 선택(tools)은 한 번에 받고, 답변 생성은 스트리밍으로 받아 TTFT·토큰/초를 잰다."""
+    payload = {"model": LLM_MODEL, "messages": messages, "stream": not tools,
                "options": {"temperature": 0.1, "num_predict": 350}}
     if tools:
         payload["tools"] = tools
     start = time.perf_counter()
+    LLM_INFLIGHT.inc()   # 처리 중(대기 포함)인 LLM 호출 수 = 대기열 길이의 근사
     try:
-        return post_json(f"{LLM_URL}/api/chat", payload)["message"]
+        if tools:
+            return post_json(f"{LLM_URL}/api/chat", payload)["message"]
+        req = urllib.request.Request(f"{LLM_URL}/api/chat", data=json.dumps(payload).encode(),
+                                     headers={"Content-Type": "application/json"})
+        content, ttft = [], None
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            for line in resp:                       # Ollama는 줄마다 JSON 조각을 보낸다
+                chunk = json.loads(line)
+                piece = chunk.get("message", {}).get("content", "")
+                if piece and ttft is None:
+                    ttft = time.perf_counter() - start
+                    LLM_TTFT.observe(ttft)
+                content.append(piece)
+                if chunk.get("done") and chunk.get("eval_duration"):
+                    LLM_TPS.observe(chunk["eval_count"] / (chunk["eval_duration"] / 1e9))  # 생성 속도
+        return {"content": "".join(content)}
     finally:
+        LLM_INFLIGHT.dec()
         LLM_LATENCY.observe(time.perf_counter() - start)
 
 

@@ -1,0 +1,92 @@
+{{- if .Values.monitoring.enabled }}
+{{- $rb := .Values.monitoring.runbookBase }}
+# 알람 규칙: severity(critical=즉시 대응 / warning=근무 시간 내 확인) + runbook_url(대응 절차)
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ai-platform-alerts
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: gpu
+      rules:
+        - alert: GPUHighTemperature
+          expr: DCGM_FI_DEV_GPU_TEMP > 85
+          for: 1m
+          labels: { severity: critical }
+          annotations:
+            summary: "GPU {{`{{ $labels.gpu }}`}} 온도 {{`{{ $value | humanize }}`}}℃ (> 85℃)"
+            runbook_url: "{{ $rb }}#gpu-high-temperature"
+        - alert: GPUMemoryHigh
+          expr: DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE) > 0.9
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "GPU {{`{{ $labels.gpu }}`}} 메모리 사용률 {{`{{ $value | humanizePercentage }}`}} (> 90%)"
+            runbook_url: "{{ $rb }}#gpu-memory-high"
+        - alert: GPUXidError
+          expr: DCGM_FI_DEV_XID_ERRORS > 0
+          labels: { severity: critical }
+          annotations:
+            summary: "GPU {{`{{ $labels.gpu }}`}} Xid {{`{{ $value }}`}} 발생 (79=버스 이탈, 48=이중 비트 ECC, 31=메모리 페이지 폴트)"
+            runbook_url: "{{ $rb }}#gpu-xid-error"
+    - name: llm-service
+      rules:
+        - alert: LLMTTFTHigh
+          expr: histogram_quantile(0.95, sum by (le) (rate(ax_llm_ttft_seconds_bucket[5m]))) > 5
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "TTFT p95 {{`{{ $value | humanizeDuration }}`}} (> 5초): 사용자가 첫 글자를 오래 기다림"
+            runbook_url: "{{ $rb }}#llm-ttft-high"
+        - alert: LLMQueueBacklog
+          expr: max(ax_llm_inflight) > 4
+          for: 2m
+          labels: { severity: warning }
+          annotations:
+            summary: "처리 중 LLM 요청 {{`{{ $value }}`}}건 (동시 슬롯 4 초과 → 대기열 발생)"
+            runbook_url: "{{ $rb }}#llm-queue-backlog"
+        - alert: Ingress5xxHigh
+          expr: |
+            sum(rate(traefik_service_requests_total{code=~"5.."}[5m]))
+              / sum(rate(traefik_service_requests_total[5m])) > 0.02
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "입구 5xx 비율 {{`{{ $value | humanizePercentage }}`}} (> 2%)"
+            runbook_url: "{{ $rb }}#ingress-5xx-high"
+        - alert: PermissionDeniedSpike
+          expr: sum(increase(ax_permission_denied_total[10m])) > 10
+          labels: { severity: warning }
+          annotations:
+            summary: "10분간 권한 거부 {{`{{ $value | humanize }}`}}건: 권한 설정 오류 또는 악용 시도 확인"
+            runbook_url: "{{ $rb }}#permission-denied-spike"
+    - name: platform
+      rules:
+        - alert: PodRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="{{ .Release.Namespace }}"}[15m]) > 2
+          labels: { severity: warning }
+          annotations:
+            summary: "{{`{{ $labels.pod }}`}} 15분간 {{`{{ $value | humanize }}`}}회 재시작"
+            runbook_url: "{{ $rb }}#pod-restarting"
+        - alert: PVCUsageHigh
+          expr: kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 0.8
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "PVC {{`{{ $labels.persistentvolumeclaim }}`}} 사용률 {{`{{ $value | humanizePercentage }}`}} (> 80%)"
+            runbook_url: "{{ $rb }}#pvc-usage-high"
+        - alert: BackupNotSucceeded24h
+          expr: time() - kube_cronjob_status_last_successful_time{namespace="{{ .Release.Namespace }}", cronjob="pg-backup"} > 86400
+          labels: { severity: critical }
+          annotations:
+            summary: "DB 백업이 24시간 넘게 성공하지 않음 (마지막 성공 {{`{{ $value | humanizeDuration }}`}} 전)"
+            runbook_url: "{{ $rb }}#backup-not-succeeded"
+        - alert: CronJobFailed
+          expr: kube_job_failed{namespace="{{ .Release.Namespace }}", condition="true"} == 1
+          labels: { severity: warning }
+          annotations:
+            summary: "Job {{`{{ $labels.job_name }}`}} 실패 (예: RLS 변경 후 수집 실패 같은 회귀)"
+            runbook_url: "{{ $rb }}#cronjob-failed"
+{{- end }}

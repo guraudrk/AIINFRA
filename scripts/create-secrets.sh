@@ -30,4 +30,23 @@ create_if_missing minio-credentials \
   --from-literal=root-password="$(rand)"
 
 # 게이트웨이: JWT 서명 키, 데모 사용자 공용 비밀번호
-create_if_missing gateway-secrets   --from-literal=jwt-secret="$(openssl rand -hex 32)"   --from-literal=demo-password="$(rand | cut -c1-12)"
+create_if_missing gateway-secrets \
+  --from-literal=jwt-secret="$(openssl rand -hex 32)" \
+  --from-literal=demo-password="$(rand | cut -c1-12)"
+
+# 이미 있는 Secret에 키만 추가 (기존 키는 건드리지 않음)
+add_key_if_missing() {
+  local ns=$1 name=$2 key=$3
+  if [[ -z "$(kubectl -n "$ns" get secret "$name" -o jsonpath="{.data.$key}" 2>/dev/null)" ]]; then
+    kubectl -n "$ns" patch secret "$name" --type=merge -p "{\"stringData\":{\"$key\":\"$(rand)\"}}" >/dev/null
+    echo "[secrets] $name/$key 추가"
+  fi
+}
+# M6: PostgreSQL 모니터링 전용 계정(ax_monitor, pg_monitor 권한만) 비밀번호
+add_key_if_missing "$NS" postgres-credentials monitor-password
+
+# M6: Grafana 관리자 (monitoring 네임스페이스)
+kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+NS=monitoring create_if_missing grafana-admin \
+  --from-literal=admin-user="admin" \
+  --from-literal=admin-password="$(rand)"

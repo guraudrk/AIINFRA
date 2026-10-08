@@ -14,5 +14,6 @@ build() {
 }
 
 build ax/ingest:0.1.1 apps/ingest
-build ax/ax-gateway:0.1.2 apps/ax-gateway
+build ax/ax-gateway:0.1.3 apps/ax-gateway
+build ax/gpu-sim-exporter:0.1.0 apps/gpu-sim-exporter
 build ax/web-ui:0.1.0 apps/web-ui

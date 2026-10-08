@@ -71,6 +71,7 @@ spec:
     - from:
         {{- include "np.fromNs" .Values.networkPolicy.ingressNamespace | nindent 8 }}
         {{- include "np.from" "web-ui" | nindent 8 }}
+        {{- include "np.from" "gpu-sim-exporter" | nindent 8 }}
         {{- include "np.fromNs" .Values.networkPolicy.monitoringNamespace | nindent 8 }}
       ports: [{ protocol: TCP, port: 8000 }]
   egress:
@@ -95,6 +96,7 @@ spec:
     - from:
         {{- include "np.from" "ax-gateway" | nindent 8 }}
         {{- include "np.from" "model-preload" | nindent 8 }}
+        {{- include "np.from" "gpu-sim-exporter" | nindent 8 }}
       ports: [{ protocol: TCP, port: 11434 }]
 ---
 # 6) embedding-serving: 게이트웨이·수집·모델 적재 Job에서만 받는다
@@ -111,6 +113,7 @@ spec:
         {{- include "np.from" "ax-gateway" | nindent 8 }}
         {{- include "np.from" "ingest" | nindent 8 }}
         {{- include "np.from" "model-preload" | nindent 8 }}
+        {{- include "np.from" "gpu-sim-exporter" | nindent 8 }}
       ports: [{ protocol: TCP, port: 11434 }]
 ---
 # 7) postgres: 게이트웨이·수집·마이그레이션(+ M7 백업)에서만 받는다
@@ -128,6 +131,7 @@ spec:
         {{- include "np.from" "ingest" | nindent 8 }}
         {{- include "np.from" "db-migrate" | nindent 8 }}
         {{- include "np.from" "pg-backup" | nindent 8 }}
+        {{- include "np.from" "postgres-exporter" | nindent 8 }}
       ports: [{ protocol: TCP, port: 5432 }]
 ---
 # 8) minio: 수집(+ M7 백업)에서만 S3 API를 받는다
@@ -143,7 +147,47 @@ spec:
     - from:
         {{- include "np.from" "ingest" | nindent 8 }}
         {{- include "np.from" "pg-backup" | nindent 8 }}
+        {{- include "np.fromNs" .Values.networkPolicy.monitoringNamespace | nindent 8 }}   # /minio/v2/metrics
       ports: [{ protocol: TCP, port: 9000 }]
+---
+# 8-1) 모니터링 exporter: Prometheus에서만 수집 요청을 받고, 필요한 곳만 들여다본다
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gpu-sim-exporter
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: gpu-sim-exporter }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        {{- include "np.fromNs" .Values.networkPolicy.monitoringNamespace | nindent 8 }}
+      ports: [{ protocol: TCP, port: 9400 }]
+  egress:
+    - to:
+        {{- include "np.from" "ax-gateway" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 8000 }]
+    - to:
+        {{- include "np.from" "llm-serving" | nindent 8 }}
+        {{- include "np.from" "embedding-serving" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 11434 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-exporter
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: postgres-exporter }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        {{- include "np.fromNs" .Values.networkPolicy.monitoringNamespace | nindent 8 }}
+      ports: [{ protocol: TCP, port: 9187 }]
+  egress:
+    - to:
+        {{- include "np.from" "postgres" | nindent 8 }}
+      ports: [{ protocol: TCP, port: 5432 }]
 ---
 # 9) 배치 작업들의 나가는 통신
 apiVersion: networking.k8s.io/v1
