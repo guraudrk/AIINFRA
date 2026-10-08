@@ -51,6 +51,23 @@ kube-prometheus-stack으로 Prometheus·Grafana·Alertmanager를 올렸다. DCGM
 - **실제로 울려 봤다**
   1. 게이트웨이에 동시 질문 6개 → 처리 중 5건 → `LLMQueueBacklog` **firing**, 그 여파로 TTFT p95가 1분까지 늘어 `LLMTTFTHigh` pending. "대기열이 생기면 TTFT가 튄다"를 지표로 확인했다.
   2. 과열 주입 → GPU 0 온도 92℃ → 1분 뒤 `GPUHighTemperature` **critical firing** → 해제.
+- **실제 대시보드 화면** (2026-10-08, "AX · AI 플랫폼" 대시보드)
+
+  ![Grafana AI 플랫폼 대시보드](../images/m6-grafana-ai-platform.png)
+
+  | 패널 | 화면에서 보이는 것 | 내가 한 일 |
+  |---|---|---|
+  | GPU 사용률 | 16:23쯤 GPU 0이 **100%**로 치솟았다가 내려옴 | `load-gateway.py`로 동시 질문 6개 → 시뮬레이터가 처리 중 요청 수를 따라 사용률 계산 |
+  | GPU 온도 (알람 85℃) | 빨간 선(85℃) 위로 **92℃**까지 올라갔다가 복귀 | `gpu-fault.sh overheat` 주입 → 1분 뒤 `GPUHighTemperature` critical firing → `clear` |
+  | GPU 메모리 사용률 | 모델이 올라가며 GPU 0이 약 6.5%(약 3GB / 46GB) | Ollama `/api/ps`의 모델 크기 + 여유 15% |
+  | GPU 전력 | 사용률을 따라 약 350W(가상 L40S TDP)까지 상승 | 사용률 비례 전력 모델 |
+  | 마지막 Xid | 0 (정상) | M8에서 `xid79` 주입 예정 |
+  | 처리 중 LLM 요청 | 슬롯 4(빨간 선)를 넘어 **5** | → `LLMQueueBacklog` firing |
+  | TTFT p50/p95 | p95 약 **1분** (알람 5초) | 대기열 때문에 첫 글자가 늦어짐 → `LLMTTFTHigh` pending |
+  | 생성 속도 p50 | 약 3.5 토큰/초 | CPU를 6개 요청이 나눠 쓰며 느려짐 (단독 15.9 토큰/초, M2) |
+
+  → 한 화면에서 **"부하 → 대기열 → TTFT 악화"** 인과 관계와 **"과열 → 알람"**이 시간 순서대로 보인다. 면접에서 이 화면 하나로 모니터링 설계를 설명할 수 있다.
+
 - **겪은 문제**
   1. Grafana를 `/grafana` 하위 경로로 옮기자 Grafana 자체 지표 주소도 `/grafana/metrics`로 바뀌어 `TargetDown`이 떴다. ServiceMonitor 경로를 고쳤다.
   2. `prom-query.sh` 안 Python의 따옴표 이스케이프 오류, 장애 주입 명령이 port-forward보다 먼저 실행된 순서 실수 → 스크립트로 만들어 재사용했다(`prom-query.sh`, `gpu-fault.sh`).
